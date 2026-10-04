@@ -1,4 +1,5 @@
 data
+materials
 
 *.pyc
 __pycache__/
