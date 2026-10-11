@@ -25,6 +25,7 @@ class OptimizationProblem():
         self.compile()
 
         self.iteration = 0
+        self.n_fev = 0 # RQ2-bis: joint function/gradient evaluations used by scipy (hardware-independent cost axis)
         self.iterations_history = list()
         self.loss_train_history = list()
         self.loss_valid_history = list()
@@ -42,7 +43,7 @@ class OptimizationProblem():
         self.ag_train_loss_grad(self.stitcher.stitch(self.variables).numpy())
         self.ag_valid_loss()
         print('Tracing completed.')
-        
+
     def get_gradient_and_loss(self, params_1d):
         self.stitcher.update_variables(params_1d)
         with tf.GradientTape(watch_accessed_variables = False) as tape:
@@ -50,11 +51,12 @@ class OptimizationProblem():
             loss_value = self.loss_train()
         grads = self.stitcher.stitch(tape.gradient(loss_value, self.variables, unconnected_gradients = tf.UnconnectedGradients.ZERO))
         return loss_value, grads
-        
+
     def ag_train_loss_grad_numpy(self, params_1d):
+        self.n_fev += 1 # RQ2-bis: scipy calls this once per joint function+gradient evaluation (line-search steps included)
         loss, grad = self.ag_train_loss_grad(params_1d)
         return loss.numpy(), grad.numpy()
-        
+
     def compute_gradient(self):
         with tf.GradientTape(watch_accessed_variables = False) as tape:
             tape.watch(self.variables)
@@ -66,23 +68,29 @@ class OptimizationProblem():
             self.iterations_history.append(self.iteration)
             self.loss_train_history.append(self.ag_train_loss())
             self.loss_valid_history.append(self.ag_valid_loss())
-            print('epoch% 5d   -   training loss: %1.3e   -   validation loss %1.3e' % 
+            print('epoch% 5d   -   training loss: %1.3e   -   validation loss %1.3e' %
                   (self.iteration, self.loss_train_history[-1], self.loss_valid_history[-1]))
         self.iteration += 1
-        
+
     def optimize_keras(self, num_epochs, optimizer):
         for _ in range(num_epochs):
             optimizer.apply_gradients(zip(self.ag_train_grad(), self.variables))
             self.iteration_callback()
-        
-    def optimize_BFGS(self, num_epochs):
+
+    def optimize_BFGS(self, num_epochs, callback_extra = None):
+        # RQ2-bis: same algorithm and tolerances as RQ2 (scipy BFGS, tol/gtol ~ 0 so the
+        # iteration count stays fixed). callback_extra is an observation hook only (e.g. the
+        # Stage 3 iteration checkpoints): it never touches the optimization. Default None
+        # reproduces the RQ2 behaviour exactly.
         options = {'maxiter': num_epochs, 'gtol': 1e-100}
         init_params = self.stitcher.stitch(self.variables).numpy()
 
         def callback(_):
             self.iteration_callback()
+            if callback_extra is not None:
+                callback_extra()
             return False
-    
+
         sopt.minimize(fun = self.ag_train_loss_grad_numpy,
                 x0 = init_params,
                 method = 'BFGS',

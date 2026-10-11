@@ -70,10 +70,14 @@ def process_dataset(dataset, problem, normalization_definition, dt = None, num_p
     
     if num_points_subsample is None:
         dataset['points_full'] = points_full
+        dataset['idxs'] = None
     else:
         idxs = np.array([[np.random.choice(num_points, num_points_subsample) for j in range(num_times)] for i in range(num_samples)])
         dataset['points_full'] = np.array([[points_full          [i,j,idxs[i,j,:],:] for j in range(num_times)] for i in range(num_samples)])
         dataset['out_fields']  = np.array([[dataset['out_fields'][i,j,idxs[i,j,:],:] for j in range(num_times)] for i in range(num_samples)])
+        # RQ2-B addition (documented in the notebook): keep the sampled indices, so that a fixed
+        # basis can be gathered at the same points (per-point basis [S,T,n,K], decode with einsum).
+        dataset['idxs'] = idxs
 
     dataset['num_points'] = dataset['points_full'].shape[2]
     dataset['num_times'] = num_times
