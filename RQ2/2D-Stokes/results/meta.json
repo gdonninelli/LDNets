@@ -1,0 +1,13 @@
+{
+  "tensorflow": "2.8.0",
+  "numpy": "1.22.3",
+  "scipy": "1.7.3",
+  "pandas": "1.4.2",
+  "git": "f34742b",
+  "training": {
+    "epochs_adam": 200,
+    "epochs_bfgs": 500,
+    "lr_adam": 0.01,
+    "alpha_reg": 0.0
+  }
+}

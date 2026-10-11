@@ -102,7 +102,7 @@ def evolve_dynamics(dataset):
 
     return tf.transpose(state_history.stack(), perm=(1,0,2))
 
-def reconstruct_output(dataset, states):    
+def reconstruct_output(dataset, states):   
     states_expanded = tf.broadcast_to(tf.expand_dims(states, axis = 2), 
         [dataset['num_samples'], dataset['num_times'], dataset['num_points'], num_latent_states])
     inp_signals_expanded = tf.broadcast_to(tf.expand_dims(dataset['inp_signals'], axis = 2),
@@ -110,7 +110,7 @@ def reconstruct_output(dataset, states):
     output = NNrec(tf.concat([states_expanded, inp_signals_expanded, dataset['points_full']], axis = 3))
     # nonlinear transformation to compress long tails
     alpha = 0.05
-    output = (output**3 + alpha*output)/(1+alpha)
+    output = (output**3 + alpha*output)/(1+alpha) #* Give more weight to near |1| values and compress long tails
     return output
 
 def LDNet(dataset):
