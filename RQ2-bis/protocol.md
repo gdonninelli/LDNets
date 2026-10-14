@@ -1,11 +1,16 @@
 # RQ2-bis protocol: computational scalability of LDNets (BFGS-only, cases B and C, nonlinear L0 and linear L2 reconstructors)
 
-Version: v0.3-draft. Date: 2026-10-11. Supersedes v0.2-draft. Changes in v0.3: Stage 7 (linear reconstructor arm,
-RQ2's L2 in R2) is now in; the cost axes gain an operation-count formula and a Pass-T unit (seconds per
-function/gradient evaluation); timing, checkpoint, equilibrium-offset and failure handling were corrected in the code
-and the text below describes the corrected code. Earlier decisions stay: scipy BFGS, 0 Adam + max 1000 BFGS, 3 seeds
-for both cases, integer grids, RQ2-style per-folder layout, Stage 4 dropped, Stage 6 out.
-Hardware: MacBook Pro, Apple M5 Pro, 18 CPU cores, 48 GB unified memory.
+Version: v0.4-draft. Date: 2026-10-14. Supersedes v0.3-draft.
+Changes in v0.4: the iteration cap is raised from 1000 to 10000 for every run (the first laptop sweep at 1000 iterations
+showed the error still falling 25-45% in the last 500 iterations for most L0 configurations, so a size effect could be hidden
+by the budget); Stage 4 is therefore not needed; a run that stops before the cap is flagged `stalled`; the final sweeps run on
+the Leonardo cluster (several nodes), the laptop is for development and smoke tests; Stage 5 no longer assumes macOS.
+Changes in v0.3 (kept): Stage 7 (linear reconstructor arm, RQ2's L2 in R2); operation-count cost axis and Pass-T unit
+(seconds per function/gradient evaluation); corrected timing, checkpoint, equilibrium-offset and failure handling.
+Earlier decisions stay: scipy BFGS with 0 Adam epochs, 3 seeds for both cases, integer grids, RQ2-style per-folder layout,
+Stage 6 out.
+Hardware: development on a MacBook Pro (Apple M5 Pro, 18 CPU cores, 48 GB unified memory); final sweeps and timing on
+Leonardo nodes (node type and cores recorded in `hardware.json`; laptop and cluster timings are not comparable).
 
 ## 1. Purpose and scope change
 
@@ -20,7 +25,7 @@ Changes with respect to RQ2:
 | Item | RQ2 | RQ2-bis |
 |---|---|---|
 | Question | Is the nonlinear reconstructor needed? | Error vs parameters vs cost, for L0 and for the linear L2 |
-| Optimizer | Adam, then BFGS | BFGS only, 0 Adam + at most 1000 BFGS (same scipy implementation as RQ2) |
+| Optimizer | Adam, then BFGS | BFGS only, 0 Adam + at most 10000 BFGS (same scipy implementation as RQ2) |
 | Test cases | A, B, C | B and C only |
 | Factors swept | Reconstructor variant, $K$, $n$ | $\mathrm{NN}_{\mathrm{dyn}}$ width/depth, $n$, iteration budget (checkpoints); for L2 also $K$ |
 | Reconstructor | Varied (L0-L3) | Two fixed arms: L0 (main) and L2 (Stage 7); L1, L3 not run |
@@ -42,7 +47,7 @@ its content is `TestCase_C_bis.ipynb`, not Case A).
 | Time steps, dt | $\mathit{dt} = 0.2$, $\mathit{dt}_{\mathrm{ref}} = 5.4$; train/valid $T = 20$, $N_t = 101$; test $T = 40$, $N_t = 201$; 200 random pts per (sample,$t$) train/valid, full 10000-pt grid test | $\mathit{dt} = 1\,\mathrm{ms}$, $\mathit{dt}_{\mathrm{ref}} = 205$, $T = 500\,\mathrm{ms}$, $N_t = 501$; 101 pts (801 raw, rate 8); 20 random pts per (sample,$t$) train/valid, full 101-pt grid test |
 | Original optimizer budget | Adam 200 + BFGS 10000 | Adam 200 + BFGS 5000 |
 | RQ2 reduced budget | 200 + 500 | 200 + 500 |
-| RQ2-bis budget | 0 Adam + max 1000 BFGS | 0 Adam + max 1000 BFGS |
+| RQ2-bis budget | 0 Adam + max 10000 BFGS (the original BFGS budget) | 0 Adam + max 10000 BFGS (twice the original 5000) |
 | Original latent size $n^*$ | 1 (`num_latent_states = 1` in script; paper sweeps $\{1, 5, 10\}$) | 12 |
 | $\mathrm{NN}_{\mathrm{dyn}}$ (width $\times$ depth), canonical | $7$-$7$-$d_s$ on $(\mathbf{s}, u)$, in-dim $2$ at $n^*$ ($85$ params at $n^* = 1$) | $8$-$d_s$ on $(\mathbf{s}, \mathbf{u})$ with equilibrium offset $\mathrm{NN}_{\mathrm{dyn}}(\mathbf{s},\mathbf{u}) = \mathrm{NN}_{\mathrm{base}}(\mathbf{s},\mathbf{u}) - \mathrm{NN}_{\mathrm{base}}(\mathbf{0},\mathbf{0})$, **re-evaluated with the current weights at every call** (as in the original script, so the dynamics vanish at rest throughout training), in-dim $14$ at $n^*$ ($228$ params at $n^* = 12$) |
 | $\mathrm{NN}_{\mathrm{rec}}$ ($\mathrm{L0}$), canonical | $24^4 \to 2$ outputs on $(\mathbf{s}, u, \mathbf{x})$, in-dim $4$ at $n^*$ ($1970$ params at $n^* = 1$; $\sim 2000$) | $17^5 \to 1$ output on $(\mathbf{s}, \mathbf{x})$, in-dim $13$ at $n^*$ ($1480$ params at $n^* = 12$; $\sim 1400$; $1708$ total with $\mathrm{NN}_{\mathrm{dyn}}$) |
@@ -72,7 +77,7 @@ which differs from the original script; RQ2-bis follows the original script.
 - **H3, iteration-limited regime.** With a fixed iteration budget, large networks are under-converged,
   so error vs size becomes non-monotone or flattens. Falsified if the error is monotone decreasing
   up to the largest $P_{\mathrm{dyn}}$ at the largest iteration budget. Implemented as the monotonicity check at
-  $1000$ iterations (value at $500$ printed); no verdict is given if some width has no checkpoint there
+  $10000$ iterations (value at $500$ printed); no verdict is given if some width has no checkpoint there
   (scipy stopped early).
 - **H4, latent dimension.** Error stops improving once $n$ is above the intrinsic dimension of the data,
   and extra latents only add cost. Falsified if the error keeps decreasing for $n \ge 2\,n^*$.
@@ -100,7 +105,9 @@ which differs from the original script; RQ2-bis follows the original script.
   (`callback_extra`, used for the Stage 3 checkpoints; default `None` reproduces RQ2 behaviour exactly)
   and an evaluation counter (`n_fev`, one joint function/gradient evaluation per scipy call, line-search
   steps included). Float64, CPU, no tensorflow-metal. Completed iterations are stored per run (`n_iters`);
-  a warning is printed if scipy stops before the cap, and the gate and H3 do not give verdicts on unequal budgets.
+  a run that scipy stops before the cap (line search gives up) is flagged `stalled` in `runs.csv`, a warning is printed,
+  it stays in the statistics and is counted (`n_stalled`, `failure_map`); the gate warns and H3 gives no verdict when the
+  budgets are unequal. Early stops are more likely at 10000 iterations than at 1000.
 - **Initialization and seeds:** same initialization scheme and the same seed list $[0, 1, 2]$ for every
   configuration and both cases (seed $0$ is the original script seed). The reconstructor is created after
   $\mathrm{NN}_{\mathrm{dyn}}$ as in the original script, so its initial weights are identical across the width sweep
@@ -110,7 +117,8 @@ which differs from the original script; RQ2-bis follows the original script.
   tracing (`trace_time_s`) and the checkpoint evaluations (each predicts the whole test set); the periodic loss
   evaluation of `iteration_callback` stays in it (small, identical for all runs).
 - **Failures:** a run with non-finite predictions is stored with `failed = True` and NaN metrics (weights kept) and
-  the sweep continues. Statistics skip failed runs and report `n_failed`.
+  the sweep continues. Statistics skip failed runs and report `n_failed`. A `stalled` run (above) is not a failure: its
+  error is reported as it is.
 - **Gate (Stage 0, adapted: the RQ2 exact-match gate cannot apply with a different optimizer):**
   the canonical BFGS-only configuration with $3$ seeds must finish with finite test NRMSE, and its median
   must be within $5$ times the RQ2 reduced-budget value (B: $2.257\cdot 10^{-2}$ at $d_s = 1$, seed $0$;
@@ -134,7 +142,7 @@ A configuration is `(variant, K, width, depth, d_s)` with $K = 0$ for L0.
 
 ### Stage 0. BFGS-only feasibility (gate)
 
-Run the canonical L0 configuration of B and of C with BFGS only, $3$ seeds, $I = 1000$.
+Run the canonical L0 configuration of B and of C with BFGS only, $3$ seeds, $I = 10000$.
 Compare with the paper's reference metrics and with the RQ2 reduced-budget results (Section 4 gate).
 - If the run diverges or stalls far above the RQ2 reduced-budget value, tune once, on validation data,
   with at most $3$ settings (optimizer algorithm and tolerances stay fixed). Then freeze the settings.
@@ -158,21 +166,22 @@ Compare with the paper's reference metrics and with the RQ2 reduced-budget resul
 
 BFGS has no learning-rate schedule, so one long run with checkpoints is equivalent to many short runs.
 Every run logs loss, function evaluations, training time (checkpoint time excluded) and validation/test NRMSE after
-$\{25, 50, 100, 200, 500, 1000\}$ completed BFGS iterations via the observation hook (the loss histories logged every
+$\{25, 50, 100, 200, 500, 1000, 2000, 5000, 10000\}$ completed BFGS iterations via the observation hook (the loss histories logged every
 $10$ iterations are not stored). This gives the surface $\mathrm{error}(P, \mathrm{iterations})$.
 
-### Stage 4. Long-budget anchor — DROPPED 2026-10-11
+### Stage 4. Long-budget anchor — NOT NEEDED (2026-10-14)
 
-Continuing to the original budgets (B: $10000$, C: $5000$ iterations) exceeds the fixed $1000$-iteration
-cap, so this stage is not run. H1/H3 conclusions are therefore conditional on the short budget only.
+It existed to check whether the trends hold at the original budgets (B: $10000$, C: $5000$ iterations). Every run now
+uses a budget of $10000$ iterations, so the stage is absorbed into the main sweeps. The checkpoint at $1000$ iterations still
+shows what the shorter budget of the first laptop sweep would have given.
 
 ### Stage 5. Thread scaling and serial timing (Pass T only)
 
 The unit is **seconds per joint function/gradient evaluation** on a stored run (median of $3$ repeats of $20$
 evaluations after a warm-up), measured in a **fresh process per thread count** (TensorFlow only accepts its thread
 counts before its first operation; `timing_worker.py` re-executes the tagged setup cells of the notebook).
-- Thread scaling: the canonical L0 run with $1$, $2$, $4$, $6$, $12$ and $18$ threads; speedup and parallel
-  efficiency; the suggested thread count (best speedup per $\sqrt{\text{thread}}$) is used next.
+- Thread scaling: the canonical L0 run with $1$, $2$, $4$, $6$, $12$ and $18$ threads by default (`thread_scaling(counts)`;
+  on the cluster choose counts up to the cores of one node); speedup and parallel efficiency; the suggested thread count (best speedup per $\sqrt{\text{thread}}$) is used next.
 - Spot timing: every stored configuration of both arms (seed $0$) at that thread count, one process, random order;
   the first configuration is timed again at the end (throttling check).
 - The training time of a configuration is then estimated as `n_fev` $\times$ `s_per_eval`.
@@ -202,14 +211,21 @@ not only the mean. Diverged or NaN runs are logged as failures (`failed` column)
 
 ## 6. Iteration budget and run budget
 
-$I_{\max} = 1000$ BFGS iterations for both cases (hard cap, user decision).
+$I_{\max} = 10000$ BFGS iterations for both cases (hard cap, user decision 2026-10-14; it was $1000$ in v0.3).
 
 Run count (fixed grid): L0 Stage 1: $7$ configs; Stage 2: B $3$ ($n = 2, 5, 10$), C $3$ ($n = 3, 6, 24$) extra
 configs; so $10$ L0 configs $\times$ $3$ seeds $= 30$ runs per case. L2 (Stage 7): $11$ configs $\times$ $3$ seeds
-$= 33$ runs per case. At RQ2 pilot rates the L0 part is about $2.5$–$4$ h of serial compute per case; L2 should be
-cheaper per evaluation (a smoke test on Case C measured about $10\times$ less time per evaluation; to be
-re-measured at full size). Sweep cells skip finished runs, so `runs.csv` doubles as the planned-vs-finished
-manifest and the sweep resumes after interruption. Budget estimates live in the notebook introductions.
+$= 33$ runs per case. Cost from the first laptop sweep (1000 iterations, both notebooks running at once): L0 about
+$5$ min per $1000$ iterations in B ($4.6$–$6.7$) and about $4$ min in C ($3.6$–$5.1$); L2 about $0.7$–$0.8$ min. At
+$10000$ iterations that is about $50$ min (B) or $40$ min (C) per L0 run and about $7$ min per L2 run, so about one day
+of serial compute per case (L0 about $25$ h, L2 about $4$ h). The sweeps are meant to be split over the cluster nodes
+at the level of single runs (every run is independent and takes at most about $1$ h).
+**Concurrency rule:** two processes must never append to the same `results/` folder (concurrent appends to the CSV files
+corrupt them): every process or shard gets its own results folder, and the folders are merged afterwards (the row
+keys make the merge a concatenation). The training-settings guard of `meta.json` refuses to mix results made with other
+settings: the first laptop sweep (1000 iterations) must be kept in a different folder.
+Sweep cells skip finished runs, so `runs.csv` doubles as the planned-vs-finished manifest and the sweep resumes after
+interruption. Budget estimates live in the notebook introductions.
 Memory: the L2 arm keeps the basis gathered at the sampled training points (B about $1.7$ GB for $K = 65$,
 less for smaller $K$; C about $0.5$ GB).
 
@@ -226,13 +242,15 @@ Timing is contaminated if runs share the machine, accuracy is not. So:
   Pass-A time otherwise (`time_src = A`).
 
 Hygiene for both passes:
-- Plugged in, fixed power mode, no other heavy load, display sleep off.
+- Laptop: plugged in, fixed power mode, no other heavy load, display sleep off. Cluster: a whole node (`--exclusive`) for
+  Stage 5, nothing else on it; thread counts above the cores allocated to the job are meaningless.
 - Each timing rebuilds and retraces and does a warm-up evaluation before the $3$ timed repeats;
   randomized run order, `time.perf_counter()`.
 - Thread counts are set explicitly in the fresh process before TensorFlow runs, and recorded.
-- `hardware.json` records the chip (`machdep.cpu.brand_string`), the performance/efficiency core split
-  (`hw.perflevel0.logicalcpu`, `hw.perflevel1.logicalcpu`), OS version, Python, TensorFlow and NumPy versions and
-  the thread count. Power mode is fixed manually, not auto-recorded.
+- `hardware.json` records the chip (`machdep.cpu.brand_string` on macOS, else the platform string), the
+  performance/efficiency core split (`hw.perflevel0.logicalcpu`, `hw.perflevel1.logicalcpu`; empty on Linux), the CPU
+  count and the cores this job may use (`sched_getaffinity`), the node name and Slurm job id, OS version, Python,
+  TensorFlow and NumPy versions and the thread count. Power mode is fixed manually, not auto-recorded.
 - Check for throttling: the first timed config is repeated at the end of the session; if the time differs by more
   than $10\%$, discard and repeat the session.
 
@@ -280,7 +298,7 @@ One notebook per case (no cross-case panels); every plot shows the median line w
 6. Linear time model $t(P_{\mathrm{dyn}}) = t_0 + t_1 \cdot P_{\mathrm{dyn}}$ and dynamics share at $4w^*$, per arm (H2).
 7. Thread scaling: speedup and efficiency vs threads (Stage 5).
 8. Singular-value decay of the training snapshots (Kolmogorov-width proxy), as in RQ2.
-9. Failure map: diverged runs per configuration.
+9. Failure map: diverged (`failed`) and early-stopped (`stalled`) runs per configuration.
 10. Stage 7: (a) error vs total operations, function evaluations, time and parameters for L0 and L2 on the same axes
     (`plot_arms`); (b) error vs $n$, vs $P_{\mathrm{dyn}}$ and vs $K$ with the projection floor
     (`plot_linear_sweeps`); (c) the `cost_to_reach` table (H6); (d) the operation-count check (`plot_flops_check`).
@@ -306,7 +324,7 @@ One notebook per case (no cross-case panels); every plot shows the median line w
 - If H1 and H3 are both rejected, the study reports that accuracy is not limited by size
   or by optimization in this range, and the next step is to look at the reconstructor
   or at the data (floors).
-- All conclusions are stated for BFGS-only at the 1000-iteration budget, never as asymptotic claims.
+- All conclusions are stated for BFGS-only at the 10000-iteration budget, never as asymptotic claims.
 
 ## 11. Thresholds to freeze (before running Stage 1)
 
@@ -333,7 +351,8 @@ Any deviation is written in `deviations.md` with the date and the reason.
 - One `sweep()` call per stage; `runs.csv` is the resume manifest (finished runs are skipped).
 - Cells of the notebooks tagged `worker` are the setup that `timing_worker.py` re-executes: keep them free of
   side effects other than creating `results/`.
-- Random seeds fixed and stored. Float64 everywhere.
+- Random seeds fixed and stored. Float64 everywhere. On the cluster, record the module/conda environment used
+  (`meta.json` stores the library versions of the first session).
 - Raw per-run rows are append-only and never overwritten (`timing.csv` is rewritten per timing session).
   The analysis is regenerated from them.
 
@@ -341,14 +360,17 @@ Any deviation is written in `deviations.md` with the date and the reason.
 
 - [x] Scripts and canonical configurations confirmed (Section 2 table; counts verified by construction).
 - [x] $\mathrm{NN}_{\mathrm{dyn}}$/$\mathrm{NN}_{\mathrm{rec}}$ inputs and output transform confirmed (Section 2 table).
-- [x] Optimizer chosen: scipy BFGS, 0 Adam + max 1000 BFGS (user decision; not L-BFGS).
-- [x] $I_{\max} = 1000$ for both cases (user cap).
-- [x] Stage 6 out; Stage 4 dropped (exceeds the cap); Stage 7 in as RQ2's L2 in R2.
+- [x] Optimizer chosen: scipy BFGS, 0 Adam + max BFGS iterations (user decision; not L-BFGS).
+- [x] $I_{\max}$ raised from 1000 to 10000 for both cases (user decision 2026-10-14, after the laptop sweep at 1000).
+- [x] Stage 6 out; Stage 4 not needed (every run has the 10000 budget); Stage 7 in as RQ2's L2 in R2.
 - [x] Linear arm design decided: $K = 65$, $n$ / width / $K$ sweeps, B L0 latent grid extended to $\{1,2,5,10\}$,
   operation-count cost axis plus Pass-T timing.
-- [ ] Revisit $n_{L2}$ (B $10$, C $12$) after the L2 $n$ sweep.
+- [ ] Revisit $n_{L2}$ (B $10$, C $12$) after the L2 $n$ sweep. The laptop sweep at 1000 iterations suggests that in B the
+  error of L2 stops improving at $n = 2$–$5$ (flat or slightly worse at $n = 10$): check this at 10000.
 - [ ] Freeze the numeric thresholds in Section 11 after Stage 0.
-- [ ] Supervisor sign-off on the BFGS-for-L-BFGS swap and the dropped Stage 4.
+- [ ] Supervisor sign-off on the BFGS-for-L-BFGS swap.
+- [ ] Cluster layout: how the runs are split over nodes (per-run or per-shard results folders) and merged;
+  not built into the notebooks yet.
 - [ ] RQ2 Case C notebook still computes the equilibrium offset once at initialisation (differs from the original
   script); decide whether to re-run RQ2 Case C.
 - [ ] Optional code follow-ups: Pareto/H5/H4 on validation medians; knee/canonical markers and an
