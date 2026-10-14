@@ -14,9 +14,9 @@
 #SBATCH --partition=dcgp_usr_prod
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=112            # TODO: check with `sinfo -Nel` / `lscpu`
+#SBATCH --cpus-per-task=56            # TODO: check with `sinfo -Nel` / `lscpu`
 #SBATCH --exclusive
-#SBATCH --time=04:00:00                # TODO: adjust (dozens of configs x thread counts)
+#SBATCH --time=24:00:00                # TODO: adjust (dozens of configs x thread counts)
 #SBATCH --output=logs/timing_%x_%j.out
 #SBATCH --error=logs/timing_%x_%j.err
 #SBATCH --account=<PROJECT>            # TODO: your project account
@@ -27,7 +27,7 @@ CASE=${1:?usage: sbatch_timing.sh 2D-Stokes|ADR-1b}
 # TODO: same module + venv as sbatch_sweep.sh
 module purge
 module load python/3.11.7
-source "$WORK/venvs/ldnets311/bin/activate"   # TODO: path of the venv
+source "$WORK/venvs/ldnets311/bin/activate"
 
 export MPLBACKEND=Agg
 export TF_CPP_MIN_LOG_LEVEL=2

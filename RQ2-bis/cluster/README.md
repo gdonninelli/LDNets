@@ -31,13 +31,14 @@ module avail python   # pick the 3.11.7 module available on the system
 module load python/3.11.7
 python3.11 -m venv "$WORK/venvs/ldnets311"
 source "$WORK/venvs/ldnets311/bin/activate"
-pip install --upgrade pip
-pip install -r requirements-cluster.txt
+python -m pip install --upgrade pip
+python -m pip install -r requirements-cluster.txt
 python -c "import tensorflow, numpy, scipy, pandas; print(tensorflow.__version__, numpy.__version__, scipy.__version__, pandas.__version__)"
 ```
 
-Update the `module load` / venv lines in `sbatch_sweep.sh` and
-`sbatch_timing.sh` to what you used.
+The sweep script loads this module and uses `$WORK/venvs/ldnets311` by
+default. Set `LDNETS_VENV` before submitting if you created the environment
+elsewhere.
 
 ## 3. Accuracy sweeps (Pass A)
 
