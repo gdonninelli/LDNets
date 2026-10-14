@@ -12,6 +12,8 @@ import sys
 
 threads, notebook, cfgs = int(sys.argv[1]), sys.argv[2], json.loads(sys.argv[3])
 os.environ['OMP_NUM_THREADS'] = str(threads)
+for var in ('MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'):   # Intel MKL / OpenBLAS (NumPy/SciPy) follow OMP unless set
+    os.environ.setdefault(var, str(threads))
 import tensorflow as tf
 tf.config.threading.set_intra_op_parallelism_threads(threads)
 tf.config.threading.set_inter_op_parallelism_threads(threads)

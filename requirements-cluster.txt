@@ -1,0 +1,13 @@
+# CPU-only Linux (Leonardo DCGP, Intel Sapphire Rapids) with Python 3.11.7.
+# The laptop files requirements.txt / requirements-macos.txt pin tensorflow==2.8.0,
+# which has no Python 3.11 wheels, and protobuf==3.20, which conflicts with TF>=2.12.
+# tensorflow==2.13.1 is the newest TF with the Keras-2 API used by this repo
+# (TF>=2.16 defaults to Keras 3 and breaks the model code) and supports Python 3.8-3.11.
+tensorflow==2.13.1
+numpy==1.24.3
+scipy==1.11.4
+pandas==2.0.3
+matplotlib==3.7.3
+# Headless notebook execution on the cluster (jupyter nbconvert --execute):
+ipykernel
+nbconvert
