@@ -9,5 +9,9 @@ scipy==1.11.4
 pandas==2.0.3
 matplotlib==3.7.3
 # Headless notebook execution on the cluster (jupyter nbconvert --execute):
+# TensorFlow 2.13 requires typing-extensions<4.6; IPython 8.17+ imports
+# TypeAliasType, which is unavailable with that TensorFlow-compatible version.
+ipython==8.16.1
+typing-extensions==4.5.0
 ipykernel
 nbconvert

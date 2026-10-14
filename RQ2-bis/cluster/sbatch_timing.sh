@@ -19,7 +19,7 @@
 #SBATCH --time=24:00:00                # TODO: adjust (dozens of configs x thread counts)
 #SBATCH --output=logs/timing_%x_%j.out
 #SBATCH --error=logs/timing_%x_%j.err
-#SBATCH --account=<PROJECT>            # TODO: your project account
+#SBATCH --account=euhpc_d35_025
 
 set -euo pipefail
 CASE=${1:?usage: sbatch_timing.sh 2D-Stokes|ADR-1b}

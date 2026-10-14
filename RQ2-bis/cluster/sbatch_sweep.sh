@@ -18,6 +18,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=56            # TODO: check with `sinfo -Nel` / `lscpu` (2x Xeon 8480+)
 #SBATCH --time=24:00:00                # TODO: adjust to shard size
+#SBATCH --account=euhpc_d35_025
 #SBATCH --chdir=/leonardo/home/userexternal/gdonnine/LDNets/RQ2-bis/cluster
 # Slurm opens these files before the job starts, so the output directory must
 # already exist. Keep submission logs in this directory.
