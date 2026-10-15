@@ -14,9 +14,11 @@
 #SBATCH --partition=dcgp_usr_prod
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=56            # TODO: check with `sinfo -Nel` / `lscpu`
+# The thread list below includes 112, so request all 112 cores on the exclusive
+# node rather than limiting the allocation to the sweep's 56 cores.
+#SBATCH --cpus-per-task=112
 #SBATCH --exclusive
-#SBATCH --time=24:00:00                # TODO: adjust (dozens of configs x thread counts)
+#SBATCH --time=03:00:00
 #SBATCH --output=logs/timing_%x_%j.out
 #SBATCH --error=logs/timing_%x_%j.err
 #SBATCH --account=euhpc_d35_025
@@ -24,18 +26,28 @@
 set -euo pipefail
 CASE=${1:?usage: sbatch_timing.sh 2D-Stokes|ADR-1b}
 
-# TODO: same module + venv as sbatch_sweep.sh
+case "$CASE" in
+  2D-Stokes) NB=TestCase_B_bis.ipynb ;;
+  ADR-1b)    NB=TestCase_C_bis.ipynb ;;
+  *) echo "Unsupported case: $CASE (expected 2D-Stokes or ADR-1b)" >&2; exit 2 ;;
+esac
+
 module purge
 module load python/3.11.7
-source "$WORK/venvs/ldnets311/bin/activate"
+VENV_DIR="${LDNETS_VENV:-$WORK/venvs/ldnets311}"
+if [[ ! -x "$VENV_DIR/bin/python" ]]; then
+  echo "Python environment not found: $VENV_DIR" >&2
+  echo "Create it with: python -m venv $VENV_DIR" >&2
+  exit 1
+fi
+source "$VENV_DIR/bin/activate"
 
 export MPLBACKEND=Agg
 export TF_CPP_MIN_LOG_LEVEL=2
 export RQ2BIS_OUT="results"               # the MERGED folder (see merge_results.py)
 export RQ2BIS_STAGE5=1
-export RQ2BIS_THREADS="1,2,4,8,16,32,64,112"   # TODO: counts up to the node's cores
+export RQ2BIS_THREADS="1,2,4,8,16,32,64,112"
 
-NB=$([ "$CASE" = "2D-Stokes" ] && echo TestCase_B_bis.ipynb || echo TestCase_C_bis.ipynb)
 cd "$SLURM_SUBMIT_DIR/../$CASE"
 mkdir -p logs
 python -m jupyter nbconvert --to notebook --execute \

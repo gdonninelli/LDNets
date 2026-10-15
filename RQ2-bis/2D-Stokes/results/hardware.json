@@ -1,0 +1,23 @@
+{
+  "chip": "Intel(R) Xeon(R) Platinum 8480+",
+  "perf_cores": "",
+  "eff_cores": "",
+  "cpu_count": 112,
+  "cores_allowed": 112,
+  "node": "lrdn4887.leonardo.local",
+  "os": "Linux-4.18.0-477.27.1.el8_8.x86_64-x86_64-with-glibc2.28",
+  "python": "3.11.7",
+  "tensorflow": "2.13.1",
+  "numpy": "1.24.3",
+  "threads": 16,
+  "slurm": {
+    "JOB_ID": "60616414",
+    "JOB_NAME": "rq2bis-timing",
+    "NODELIST": "lrdn4887",
+    "PARTITION": "",
+    "NTASKS": "1",
+    "CPUS_PER_TASK": "112",
+    "CPUS_ON_NODE": "112",
+    "ARRAY_TASK_ID": ""
+  }
+}
