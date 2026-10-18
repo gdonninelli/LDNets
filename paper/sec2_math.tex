@@ -1,0 +1,228 @@
+\section{Mathematical Formulation and Theoretical Bounds}
+\label{sec:math}
+
+This section establishes the mathematical framework governing both experimental campaigns. We formulate the time-discrete LDNet system, define the four reconstructor families ($\mathrm{L0}$--$\mathrm{L3}$) and the two training regimes ($\mathrm{R1}$ and $\mathrm{R2}$), specify the quadrature-weighted discrete inner products used to construct orthonormal bases on computational grids, and prove two structural rank bounds that dictate when a latent dynamical model is limited by its reconstructor, its latent dimension, or the hidden width of its dynamics network.
+
+\subsection{Time-Discrete LDNet Formulation and Equilibrium Enforcement}
+
+Consider a spatial domain $\Omega \subset \R^{d_x}$ ($d_x \in \{1,2\}$) and a time interval $[0,T]$ discretised into $N_t$ uniform instants $t_i = i\,\Delta t$ for $i = 0, 1, \dots, N_t - 1$, with $T = (N_t - 1)\Delta t$. For each trajectory $s \in \{1,\dots,S\}$, the system is driven by a known external input signal $\mathbf{u}^{(s)}(t_i) \in \R^{d_u}$ and starts from a quiescent equilibrium state $y^{(s)}(\mathbf{x}, 0) = 0$.
+
+An LDNet evolves a latent state vector $\mathbf{s}^{(s)}(t_i) \in \R^{d_s}$ (written also as $n \equiv d_s$ in the capacity scaling analysis) from the exact zero initial condition $\mathbf{s}^{(s)}(0) = \mathbf{0}$ via the explicit Forward Euler scheme with time-normalisation constant $\Delta t_{\mathrm{ref}} > 0$:
+\begin{equation}
+  \mathbf{s}^{(s)}(0) = \mathbf{0}, \qquad
+  \mathbf{s}^{(s)}(t_{i+1}) = \mathbf{s}^{(s)}(t_i) + \frac{\Delta t}{\Delta t_{\mathrm{ref}}}\,\NNdyn\!\big(\mathbf{s}^{(s)}(t_i), \mathbf{u}^{(s)}(t_i); \theta_{\mathrm{dyn}}\big), \quad i = 0, \dots, N_t - 2.
+  \label{eq:forward_euler}
+\end{equation}
+Here $\NNdyn : \R^{d_s + d_u} \to \R^{d_s}$ is a fully connected MLP with $L$ hidden layers of width $w$, hyperbolic tangent ($\tanh$) activations in every hidden layer, and a linear output layer:
+\begin{equation}
+  \mathbf{h}_0 = \begin{bmatrix} \mathbf{s} \\ \mathbf{u} \end{bmatrix} \in \R^{d_s + d_u}, \qquad
+  \mathbf{h}_\ell = \tanh\!\big(W_\ell \mathbf{h}_{\ell-1} + \mathbf{b}_\ell\big) \in \R^w \quad (\ell = 1,\dots,L), \qquad
+  \NNbase(\mathbf{s},\mathbf{u}) = W_{\mathrm{out}}\mathbf{h}_L + \mathbf{b}_{\mathrm{out}} \in \R^{d_s},
+  \label{eq:nndyn_mlp}
+\end{equation}
+with $W_1 \in \R^{w \times (d_s + d_u)}$, $W_\ell \in \R^{w \times w}$ for $\ell=2,\dots,L$, and $W_{\mathrm{out}} \in \R^{d_s \times w}$. The total number of trainable parameters in $\NNdyn$ is therefore
+\begin{equation}
+  P_{\mathrm{dyn}}(w, L, d_s, d_u) = w(d_s + d_u + 1) + (L - 1)w(w + 1) + d_s(w + 1).
+  \label{eq:P_dyn}
+\end{equation}
+
+In problems where $\mathbf{u}(t) \equiv \mathbf{0}$ corresponds to an unperturbed physical rest state that must remain strictly invariant for all $t \ge 0$ (such as the excitable cardiac tissue of Case~C prior to stimulus arrival), the dynamics network enforces the exact rest-state equilibrium $\dot{\mathbf{s}}(\mathbf{0},\mathbf{0}) = \mathbf{0}$ by subtracting the base network evaluated at the origin:
+\begin{equation}
+  \NNdyn(\mathbf{s}, \mathbf{u}; \theta_{\mathrm{dyn}}) = \NNbase(\mathbf{s}, \mathbf{u}; \theta_{\mathrm{dyn}}) - \NNbase(\mathbf{0}, \mathbf{0}; \theta_{\mathrm{dyn}}).
+  \label{eq:equilibrium_offset}
+\end{equation}
+As we shall prove in Proposition~\ref{prop:dyn_rank_bound} and discuss in Section~\ref{sec:rq2_limitations}, two implementation details of~\eqref{eq:equilibrium_offset} have mathematical consequences: first, whether $\NNbase(\mathbf{0},\mathbf{0};\theta_{\mathrm{dyn}})$ is re-evaluated dynamically at every gradient call (as in the original script \texttt{src/TestCase\_3.py} and in \texttt{RQ2-bis}) or frozen at weight initialisation (as occurred in the \texttt{RQ2} Case~C notebook); second, the subtraction of $\NNbase(\mathbf{0},\mathbf{0})$ cancels the output bias $\mathbf{b}_{\mathrm{out}}$ identically, confining $\NNdyn(\mathbf{s},\mathbf{u})$ strictly to the $w$-dimensional column space $\operatorname{range}(W_{\mathrm{out}})$.
+
+\subsection{The Reconstructor Hierarchy: From Pointwise MLPs (\texorpdfstring{$\mathrm{L0}$}{L0}) to Modal Synthesis (\texorpdfstring{$\mathrm{L1}$}{L1}--\texorpdfstring{$\mathrm{L3}$}{L3})}
+
+Let $\mathbf{z}(t) \in \R^r$ denote the input vector passed to the reconstructor at time $t$, where
+\begin{equation}
+  \mathbf{z}(t) = \begin{dcases}
+    \mathbf{s}(t) \in \R^{d_s} & \text{in Cases A and C } (r = d_s), \\
+    \begin{bmatrix} \mathbf{s}(t) \\ u(t) \end{bmatrix} \in \R^{d_s + 1} & \text{in Case B } (r = d_s + 1),
+  \end{dcases}
+\end{equation}
+matching the original architecture of Regazzoni et al.~\cite{regazzoni2024learning}, where the lid velocity $u(t)$ is supplied directly to the cavity-flow reconstructor to account for the instantaneous boundary condition on the top lid.
+
+There are two mathematically distinct ways to map $\mathbf{z}(t)$ and a spatial query point $\mathbf{x} \in \Omega$ to the predicted field $\hat{y}(\mathbf{x},t) \in \R^{n_{\mathrm{comp}}}$. In the \emph{implicit neural representation} view ($\mathrm{L0}$), $[\mathbf{z}(t); \mathbf{x}] \in \R^{r + d_x}$ is fed into an MLP of $L_{\mathrm{rec}}$ hidden layers of width $w_{\mathrm{rec}}$ with $\tanh$ activations:
+\begin{equation}
+  \hat{y}_{\mathrm{L0}}(\mathbf{x},t) = \sigma_{\mathrm{out}}\!\Big(\NNrec\!\big(\mathbf{z}(t), \mathbf{x}; \theta_{\mathrm{rec}}\big)\Big),
+  \label{eq:L0_def}
+\end{equation}
+where $\sigma_{\mathrm{out}}$ is the identity map in Cases~A and~C, and the cubic tail-compression link function $\sigma_{\mathrm{out}}(o) = (o^3 + \alpha o)/(1 + \alpha)$ with $\alpha = 0.05$ in Case~B. As $\mathbf{z}(t)$ varies over $\R^r$, the map $\mathbf{x} \mapsto \hat{y}_{\mathrm{L0}}(\mathbf{x},t)$ sweeps out a smooth, curved $r$-dimensional manifold in $L^2(\Omega;\R^{n_{\mathrm{comp}}})$ that is \emph{non-separable} in $(\mathbf{z},\mathbf{x})$: the spatial shapes themselves deform, translate, or sharpen as a function of the latent state. The parameter count of $\mathrm{L0}$ is
+\begin{equation}
+  P_{\mathrm{rec}}^{\mathrm{L0}} = w_{\mathrm{rec}}(r + d_x + 1) + (L_{\mathrm{rec}} - 1)w_{\mathrm{rec}}(w_{\mathrm{rec}} + 1) + n_{\mathrm{comp}}(w_{\mathrm{rec}} + 1).
+  \label{eq:P_rec_L0}
+\end{equation}
+
+In the \emph{separable modal synthesis} view ($\mathrm{L1}$--$\mathrm{L3}$), we fix a time-independent mean field $\bar{y}(\mathbf{x})$ (computed solely as the sample-and-time average of the training snapshots) and a family of fixed spatial basis functions $\{\varphi_k(\mathbf{x})\}_{k=1}^K \subset L^2(\Omega;\R^{n_{\mathrm{comp}}})$ that are orthonormal with respect to the discrete $L^2$ inner product on the computational grid. Every modal reconstructor takes the separable form
+\begin{equation}
+  \hat{y}(\mathbf{x},t) = \bar{y}(\mathbf{x}) + \sum_{k=1}^K c_k\!\big(\mathbf{z}(t)\big)\,\varphi_k(\mathbf{x}),
+  \label{eq:modal_synthesis}
+\end{equation}
+so that all spatial dependence resides in the fixed basis $\{\varphi_k\}$ and all dependence on the latent state resides in the coefficient map $\mathbf{c} : \R^r \to \R^K$. The four reconstructor variants of our study form a strict hierarchy of decreasing structural constraints:
+
+\begin{table}[!htbp]
+\centering
+\caption{Mathematical definition, trainable parameter count $P_{\mathrm{rec}}$, reachable manifold in function space, and operator-learning analogue of the four reconstructor variants $\mathrm{L0}$--$\mathrm{L3}$. Here $r = \dim(\mathbf{z})$ equals $d_s$ in Cases~A and~C, and $d_s + 1$ in Case~B.}
+\label{tab:reconstructor_hierarchy}
+\small\resizebox{\textwidth}{!}{%
+
+\begin{tabular}{@{}lllll@{}}
+\toprule
+\textbf{Variant} & \textbf{Reconstruction Formula $\hat{y}(\mathbf{x},t)$} & \textbf{Trainable $P_{\mathrm{rec}}$} & \textbf{Reachable Set in $L^2(\Omega)$} & \textbf{Closest Analogue} \\
+\midrule
+$\mathbf{L0}$ & $\sigma_{\mathrm{out}}\!\big(\NNrec(\mathbf{z}(t),\mathbf{x})\big)$ & $O(w_{\mathrm{rec}}^2 L_{\mathrm{rec}})$ & Curved $r$-dim.\ manifold (basis-free) & Original LDNet~\cite{regazzoni2024learning} \\
+$\mathbf{L1}$ & $\bar{y}(\mathbf{x}) + \sum_{k=1}^{d_s} s_k(t)\,\varphi_k(\mathbf{x})$ & $0$ (none) & Fixed $d_s$-dim.\ linear subspace $V_{d_s}$ & Galerkin ROM~\cite{quarteroni2015reduced} \\
+$\mathbf{L2}$ & $\bar{y}(\mathbf{x}) + \sum_{k=1}^K (W\mathbf{z}(t)+\mathbf{b})_k \varphi_k(\mathbf{x})$ & $K(r + 1)$ & Affine subspace of dim.\ $\le \min(r,K)$ in $V_K$ & Linear-readout SNO / PCA-Net \\
+$\mathbf{L3}$ & $\bar{y}(\mathbf{x}) + \sum_{k=1}^K g_\theta(\mathbf{z}(t))_k \varphi_k(\mathbf{x})$ & Matched to $\mathrm{L0}$ & Curved $r$-dim.\ surface inside $V_K$ & Fixed-trunk DeepONet~\cite{lu2021learning} \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\noindent Notice the exact single-property increments across Table~\ref{tab:reconstructor_hierarchy}:
+\begin{itemize}[leftmargin=2em]
+  \item Going from $\mathbf{L1}$ to $\mathbf{L2}$ introduces an affine matrix-vector transformation $W\mathbf{z}+\mathbf{b}$ ($W \in \R^{K \times r}$, $\mathbf{b} \in \R^K$), which releases the one-to-one identification $c_k = s_k$, permits $K > d_s$, and provides a constant offset $\mathbf{b}$ capable of cancelling the projection of the mean field $\bar{y}$ at $t=0$ when $\mathbf{s}(0)=\mathbf{0}$. To ensure $\mathrm{L1}$ and $\mathrm{L2}$ are strictly linear in the modal amplitudes, the cubic output link $\sigma_{\mathrm{out}}$ of Case~B is omitted in $\mathrm{L1}$ and $\mathrm{L2}$.
+  \item Going from $\mathbf{L2}$ to $\mathbf{L3}$ replaces the affine map $W\mathbf{z}+\mathbf{b}$ with a two-hidden-layer $\tanh$ MLP $g_\theta : \R^r \to \R^K$ whose hidden width $w_{g}$ is chosen as the largest integer such that $P_{\mathrm{rec}}^{\mathrm{L3}}(w_g) = w_g(r+1) + w_g(w_g+1) + K(w_g+1) \le P_{\mathrm{rec}}^{\mathrm{L0}}$. This isolates the effect of nonlinearity in the latent-to-coefficient map at equal parameter budget while keeping the spatial representation strictly linear inside $V_K = \operatorname{span}\{\varphi_1,\dots,\varphi_K\}$.
+  \item Going from $\mathbf{L3}$ to $\mathbf{L0}$ removes the fixed linear subspace $V_K$ altogether, allowing the spatial basis functions themselves to adapt nonlinearly to the latent state $\mathbf{z}(t)$.
+\end{itemize}
+
+\subsection{Discrete Quadrature Inner Products, Orthonormal Bases, and Parseval's Identity}
+\label{sec:discrete_inner_product}
+
+Because all training losses and test error metrics are evaluated on a discrete spatial grid $\{\mathbf{x}_j\}_{j=1}^{N_h} \subset \Omega$, continuous $L^2(\Omega)$ orthogonality does not guarantee discrete orthogonality on the grid. If the basis functions $\{\varphi_k\}$ are only approximately orthogonal on the grid, modal projection $\langle y - \bar{y}, \varphi_k \rangle$ no longer coincides with the least-squares fit, Parseval's identity fails, and adding higher-order modes alters the coefficients of lower-order modes. We therefore equip the grid with the quadrature-weighted discrete inner product
+\begin{equation}
+  \ip{f}{g} = \sum_{j=1}^{N_h} w_j\, f(\mathbf{x}_j) \cdot g(\mathbf{x}_j), \qquad \norm{f}_w = \sqrt{\ip{f}{f}},
+  \label{eq:discrete_ip}
+\end{equation}
+where the quadrature weights $w_j > 0$ are chosen to match the geometry and boundary conditions of each benchmark:
+\begin{enumerate}[leftmargin=2em]
+  \item \textbf{Case A (1D periodic grid on $[-1,1)$, $N_h = 100$):} uniform midpoint/trapezoidal weights $w_j = h = 2/100 = 0.02$. The discrete Fourier basis $\{1/\sqrt{2}, \cos(\pi x), \sin(\pi x), \cos(2\pi x), \sin(2\pi x), \dots\}$ is exact and analytically $\ip{\cdot}{\cdot}$-orthonormal up to $K = 99$ modes.
+  \item \textbf{Case B (2D uniform Cartesian grid on $[0,1]^2$, $N_h = 100 \times 100 = 10{,}000$):} uniform cell area weights $w_j = \Delta x\,\Delta y = (1/99)^2$. The vector POD modes $\boldsymbol{\varphi}_k(\mathbf{x}_j) \in \R^2$ are constructed from the centred training snapshots via the method of snapshots (eigendecomposition of the temporal Gram matrix followed by discrete $\ip{\cdot}{\cdot}$-normalisation), yielding exact discrete vector orthonormality $\sum_{j=1}^{N_h} w_j\,\boldsymbol{\varphi}_k(\mathbf{x}_j)\cdot\boldsymbol{\varphi}_\ell(\mathbf{x}_j) = \delta_{k\ell}$.
+  \item \textbf{Case C (1D closed interval $[0,100]$ with Neumann boundary conditions, $N_h = 101$):} composite trapezoidal weights mapped to the reference interval $[-1,1]$, namely $w_j = 2/100$ at interior nodes $j \in \{2,\dots,100\}$ and $w_1 = w_{101} = 1/100$ at the two boundary endpoints. Continuous Legendre polynomials $P_{k-1}(\xi)$ normalised in $L^2(-1,1)$ lose discrete orthogonality on a 101-point grid as degree increases: off-diagonal entries of their discrete trapezoidal Gram matrix reach $0.04$ for $K \le 10$, $0.20$ for $K \le 17$, $0.50$ for $K \le 33$, and exceed $1.0$ (becoming numerically singular) for $K = 65$. To preserve both the nested polynomial subspaces $\operatorname{span}\{P_0,\dots,P_{K-1}\}$ and exact discrete orthonormality up to $K=65$, we apply a weighted QR factorisation to the Legendre Vandermonde matrix $V \in \R^{101 \times 65}$: setting $\widetilde{V} = \operatorname{diag}(\sqrt{\mathbf{w}})\,V = Q R$ with $R_{kk} > 0$, the columns $\varphi_k(\mathbf{x}_j) = Q_{jk}/\sqrt{w_j}$ satisfy $\ip{\varphi_k}{\varphi_\ell} = \delta_{k\ell}$ to machine precision ($< 10^{-15}$) while spanning the exact degree-$(K-1)$ polynomial space for every $K$.
+\end{enumerate}
+
+With exact discrete orthonormality $\ip{\varphi_k}{\varphi_\ell} = \delta_{k\ell}$ established across all three cases, the orthogonal projection of any field $y(\mathbf{x},t)$ (after subtracting $\bar{y}(\mathbf{x})$) onto the $K$-dimensional subspace $V_K = \operatorname{span}\{\varphi_1,\dots,\varphi_K\}$ is given simply by
+\begin{equation}
+  P_K\big(y(\cdot,t) - \bar{y}\big)(\mathbf{x}) = \sum_{k=1}^K c_k(t)\,\varphi_k(\mathbf{x}), \qquad c_k(t) = \ip{y(\cdot,t) - \bar{y}}{\varphi_k}.
+\end{equation}
+For any modal prediction $\hat{y}(\mathbf{x},t) = \bar{y}(\mathbf{x}) + \sum_{k=1}^K \hat{c}_k(t)\,\varphi_k(\mathbf{x}) \in \bar{y} + V_K$, the Pythagorean theorem (Parseval's identity) splits the squared error at every instant $t$ into two orthogonal components:
+\begin{equation}
+  \norm{y(\cdot,t) - \hat{y}(\cdot,t)}_w^2 = \underbrace{\norm{\big(y(\cdot,t) - \bar{y}\big) - P_K\big(y(\cdot,t) - \bar{y}\big)}_w^2}_{\text{spatial truncation error outside } V_K} + \underbrace{\sum_{k=1}^K \big|c_k(t) - \hat{c}_k(t)\big|^2}_{\text{modal coefficient error inside } V_K}.
+  \label{eq:pythagoras}
+\end{equation}
+Summing~\eqref{eq:pythagoras} over all test trajectories $s=1,\dots,S_{\mathrm{test}}$ and time steps $t_i$ and dividing by the total field energy $\sum_{s,i} \norm{y^{(s)}(\cdot,t_i)}_w^2$ yields the fundamental error decomposition
+\begin{equation}
+  \varepsilon_{\mathrm{total}}^2 = \varepsilon_{\mathrm{proj}}(K)^2 + \varepsilon_{\mathrm{coef}}^2, \qquad
+  \text{where}\quad
+  \varepsilon_{\mathrm{total}} = \frac{\norm{y - \hat{y}}}{\norm{y}}, \quad
+  \varepsilon_{\mathrm{proj}}(K) = \frac{\norm{(y - \bar{y}) - P_K(y - \bar{y})}}{\norm{y}}.
+  \label{eq:eps_decomp}
+\end{equation}
+The quantity $\varepsilon_{\mathrm{proj}}(K)$ is the \textbf{projection floor} of the $K$-mode basis: it depends only on the test data and the basis $\{\varphi_k\}_{k=1}^K$, can be computed before any neural network is trained, and constitutes a hard, unconditional lower bound $\varepsilon_{\mathrm{total}} \ge \varepsilon_{\mathrm{proj}}(K)$ for $\mathrm{L1}$, $\mathrm{L2}$, and $\mathrm{L3}$. The ratio
+\begin{equation}
+  \eta = \frac{\varepsilon_{\mathrm{total}}}{\varepsilon_{\mathrm{proj}}(K)} = \sqrt{1 + \frac{\varepsilon_{\mathrm{coef}}^2}{\varepsilon_{\mathrm{proj}}(K)^2}} \ge 1
+  \label{eq:eff_ratio}
+\end{equation}
+is the \textbf{efficiency ratio}: $\eta \approx 1$ means that the learned latent dynamics and coefficient map extract nearly all accuracy permitted by the $K$-mode basis (so the spatial basis is the bottleneck), whereas $\eta \gg 1$ indicates that the error is dominated by inaccurate modal coefficients $\hat{c}_k(t)$ (so the latent dynamics, latent rank, or optimization is the bottleneck).
+
+Finally, to maintain direct comparability with the LDNet benchmark values reported by Regazzoni et al.~\cite{regazzoni2024learning}, we also report the range-normalised root-mean-square error ($\NRMSE$) on denormalised physical fields:
+\begin{equation}
+  \NRMSE = \frac{\sqrt{\frac{1}{S N_t N_h n_{\mathrm{comp}}}\sum_{s,i,j,c} \big(\hat{y}^{(s)}_c(\mathbf{x}_j,t_i) - y^{(s)}_c(\mathbf{x}_j,t_i)\big)^2}}{y_{\max} - y_{\min}}.
+  \label{eq:nrmse_def}
+\end{equation}
+On any fixed test set with uniform interior quadrature weights, $\NRMSE$ and $\varepsilon_{\mathrm{total}}$ are directly proportional:
+\begin{equation}
+  \NRMSE = c_{\mathrm{case}}\,\varepsilon_{\mathrm{total}}, \qquad
+  c_A = 0.16857, \quad c_B = 0.04796, \quad c_C = 0.34836,
+  \label{eq:nrmse_proportionality}
+\end{equation}
+a relation verified numerically across all 942 runs of our repositories.
+
+\subsection{Two Structural Rank Bounds: Reconstructor Rank vs.\ Dynamics Bottleneck}
+\label{sec:rank_bounds}
+
+While the projection floor $\varepsilon_{\mathrm{proj}}(K)$ bounds any modal expansion in $V_K$, it does not capture the algebraic rank bottlenecks imposed by the latent vector $\mathbf{z}(t) \in \R^r$ or by the hidden layers of the dynamics network $\NNdyn$. We now state and prove two propositions that govern the expressive rank of LDNets in \texttt{RQ2} and \texttt{RQ2-bis}.
+
+\begin{proposition}[Reconstructor Rank Bound for Affine Modal Synthesis ($\mathrm{L2}$)]
+\label{prop:rec_rank_bound}
+Let $\mathbf{z}(t) \in \R^r$ be the decoder input ($r = d_s$ in Cases~A and~C; $r = d_s + 1$ in Case~B), and consider the affine modal reconstructor $\mathrm{L2}$,
+\[
+  \hat{y}(\cdot,t) - \bar{y} = \Phi_K\!\big(W\mathbf{z}(t) + \mathbf{b}\big) = \sum_{k=1}^K \big(W\mathbf{z}(t) + \mathbf{b}\big)_k \varphi_k, \qquad W \in \R^{K \times r}, \quad \mathbf{b} \in \R^K.
+\]
+Then, for any number of basis modes $K \ge 1$ and any trajectory $\{\mathbf{z}(t)\}$, the set of centred fields generated by $\mathrm{L2}$ is contained in the affine subspace $\Phi_K\mathbf{b} + \operatorname{range}(\Phi_K W)$ of dimension at most $\min(r, K)$. Consequently, on any collection of $M$ centred snapshots $\{y_m - \bar{y}\}_{m=1}^M$ with $\ip{\cdot}{\cdot}$-singular values $\sigma_1 \ge \sigma_2 \ge \dots \ge 0$, the relative error of $\mathrm{L2}$ with $\mathbf{b}=\mathbf{0}$ (or with $\bar{y}$ equal to the snapshot mean) satisfies the unconditional lower bound
+\begin{equation}
+  \varepsilon_{\mathrm{total}}^{\mathrm{L2}}(r, K) \ge \max\!\Big\{ \varepsilon_{\mathrm{proj}}(K),\ \varepsilon_{\mathrm{rank}}(r) \Big\}, \qquad
+  \text{where}\quad \varepsilon_{\mathrm{rank}}(r) = \frac{\sqrt{\sum_{k > r} \sigma_k^2}}{\norm{y}}.
+  \label{eq:rec_rank_bound}
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+Because $\Phi_K : \R^K \to V_K \subset L^2(\Omega)$ is an isometric linear embedding and $W : \R^r \to \R^K$ is linear, the composition $\Phi_K W : \R^r \to L^2(\Omega)$ is a linear operator of rank $\operatorname{rank}(\Phi_K W) = \operatorname{rank}(W) \le \min(r, K)$. Every prediction $\hat{y}(\cdot,t) - \bar{y}$ lies both in $V_K$ (which yields $\varepsilon_{\mathrm{total}} \ge \varepsilon_{\mathrm{proj}}(K)$) and in a linear subspace of $L^2(\Omega)$ of dimension at most $r$ (shifted by $\Phi_K\mathbf{b}$; for snapshots centred around their mean, shifting a subspace by a constant vector $\Phi_K\mathbf{b}$ strictly increases the sum of squared residuals by $M\norm{P_{\mathcal{W}^\perp}\Phi_K\mathbf{b}}_w^2 \ge 0$). By the Eckart--Young--Mirsky theorem~\cite{eckart1936approximation,mirsky1960symmetric}, the minimum sum of squared distances from $M$ centred snapshots to any linear subspace of dimension at most $r$ is $\sum_{k > r} \sigma_k^2$, achieved by the span of the first $r$ POD modes. Dividing by $\norm{y}$ yields~\eqref{eq:rec_rank_bound}.
+\end{proof}
+
+Proposition~\ref{prop:rec_rank_bound} has an immediate experimental corollary: \textbf{for a linear reconstructor ($\mathrm{L2}$), sweeping $K$ beyond $r = \dim(\mathbf{z})$ cannot reduce the error below the $r$-mode POD floor $\varepsilon_{\mathrm{rank}}(r)$}. A sweep over $K \gg d_s$ with an affine decoder is therefore a sweep over the latent dimension $d_s$ in disguise. To utilize $K > r$ modes, the reconstructor must curve the $r$-dimensional latent manifold inside $V_K$ via a nonlinear map $g_\theta(\mathbf{z})$ ($\mathrm{L3}$), or deform the spatial basis directly ($\mathrm{L0}$).
+
+When we turn to \texttt{RQ2-bis} and sweep the latent dimension $n \equiv d_s$ upward (to $n=10$ in Case~B and $n=24$ in Case~C) while holding the dynamics network $\NNdyn$ at its canonical hidden width $w^*$ ($w^* = 7$ in Case~B, $w^* = 8$ in Case~C), a second, previously unnoticed algebraic rank ceiling emerges---this time inside the \textbf{dynamics network} itself.
+
+\begin{proposition}[Dynamics Hidden-Width Bottleneck Rank Bound]
+\label{prop:dyn_rank_bound}
+Consider the discrete Forward Euler latent dynamical system~\eqref{eq:forward_euler} initialized at $\mathbf{s}(0) = \mathbf{0}$, where the dynamics MLP $\NNdyn : \R^{n + d_u} \to \R^n$ has last hidden layer width $w$, so that its output layer reads
+\[
+  \NNbase(\mathbf{s},\mathbf{u}) = W_{\mathrm{out}}\,\mathbf{h}_L(\mathbf{s},\mathbf{u}) + \mathbf{b}_{\mathrm{out}}, \qquad W_{\mathrm{out}} \in \R^{n \times w}, \quad \mathbf{b}_{\mathrm{out}} \in \R^n.
+\]
+Let $S_{\mathrm{traj}} \in \R^{(S N_t) \times n}$ be the matrix stacking all latent states $\mathbf{s}^{(s)}(t_i)^\top$ across any collection of $S$ trajectories and $N_t$ time steps, and let $J(\mathbf{s},\mathbf{u}) = \frac{\partial \NNdyn(\mathbf{s},\mathbf{u})}{\partial \mathbf{s}} \in \R^{n \times n}$ denote the state-transition Jacobian at any point $(\mathbf{s},\mathbf{u})$. Then:
+\begin{enumerate}[label=(\roman*),leftmargin=2.2em]
+  \item \textbf{Without equilibrium subtraction (Case B):} Every latent state $\mathbf{s}^{(s)}(t_i)$ lies in the subspace $\operatorname{range}(W_{\mathrm{out}}) + \operatorname{span}\{\mathbf{b}_{\mathrm{out}}\} \subset \R^n$, so that
+  \begin{equation}
+    \operatorname{rank}(S_{\mathrm{traj}}) \le \min(n,\, w + 1).
+    \label{eq:traj_rank_no_eq}
+  \end{equation}
+  \item \textbf{With exact equilibrium subtraction~\eqref{eq:equilibrium_offset} (Case C):} Because $\NNdyn(\mathbf{s},\mathbf{u}) = W_{\mathrm{out}}\big(\mathbf{h}_L(\mathbf{s},\mathbf{u}) - \mathbf{h}_L(\mathbf{0},\mathbf{0})\big)$, the output bias $\mathbf{b}_{\mathrm{out}}$ cancels identically and every state $\mathbf{s}^{(s)}(t_i)$ lies strictly in $\operatorname{range}(W_{\mathrm{out}})$, yielding
+  \begin{equation}
+    \operatorname{rank}(S_{\mathrm{traj}}) \le \min(n,\, w).
+    \label{eq:traj_rank_eq}
+  \end{equation}
+  \item \textbf{Jacobian rank ceiling (both cases):} At every state $(\mathbf{s},\mathbf{u})$ and for any root-mean-square time average over trajectories, the dynamics Jacobian satisfies
+  \begin{equation}
+    \operatorname{rank}\!\big(J(\mathbf{s},\mathbf{u})\big) \le \min(n,\, w), \qquad \operatorname{colspan}\!\big(J(\mathbf{s},\mathbf{u})\big) \subseteq \operatorname{range}(W_{\mathrm{out}}).
+    \label{eq:jac_rank_bound}
+  \end{equation}
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+Unrolling the Forward Euler recursion~\eqref{eq:forward_euler} from $\mathbf{s}^{(s)}(0) = \mathbf{0}$ gives, for every $i \ge 1$,
+\[
+  \mathbf{s}^{(s)}(t_i) = \frac{\Delta t}{\Delta t_{\mathrm{ref}}} \sum_{m=0}^{i-1} \NNdyn\!\big(\mathbf{s}^{(s)}(t_m), \mathbf{u}^{(s)}(t_m)\big).
+\]
+In Case~(i), each summand equals $W_{\mathrm{out}}\mathbf{h}_L(\mathbf{s}^{(s)}(t_m),\mathbf{u}^{(s)}(t_m)) + \mathbf{b}_{\mathrm{out}}$, so $\mathbf{s}^{(s)}(t_i) = W_{\mathrm{out}}\boldsymbol{\gamma}_{s,i} + i\frac{\Delta t}{\Delta t_{\mathrm{ref}}}\mathbf{b}_{\mathrm{out}} \in \operatorname{range}(W_{\mathrm{out}}) + \operatorname{span}\{\mathbf{b}_{\mathrm{out}}\}$, a subspace of $\R^n$ of dimension at most $\operatorname{rank}(W_{\mathrm{out}}) + 1 \le \min(n, w+1)$. In Case~(ii), $\mathbf{b}_{\mathrm{out}}$ cancels in every step, so $\mathbf{s}^{(s)}(t_i) = W_{\mathrm{out}}\widetilde{\boldsymbol{\gamma}}_{s,i} \in \operatorname{range}(W_{\mathrm{out}})$, which has dimension at most $\operatorname{rank}(W_{\mathrm{out}}) \le \min(n,w)$. Finally, for~(iii), differentiating $\NNdyn(\mathbf{s},\mathbf{u})$ with respect to $\mathbf{s}$ by the chain rule yields
+\[
+  J(\mathbf{s},\mathbf{u}) = \frac{\partial \NNdyn(\mathbf{s},\mathbf{u})}{\partial \mathbf{s}} = W_{\mathrm{out}} \frac{\partial \mathbf{h}_L(\mathbf{s},\mathbf{u})}{\partial \mathbf{s}},
+\]
+which is the product of $W_{\mathrm{out}} \in \R^{n \times w}$ and $\frac{\partial \mathbf{h}_L}{\partial \mathbf{s}} \in \R^{w \times n}$ (and for $L > 1$, intermediate $w \times w$ factors). Hence $\operatorname{rank}(J(\mathbf{s},\mathbf{u})) \le \min(n,w)$ pointwise, and since every column of $J(\mathbf{s},\mathbf{u})$ belongs to the fixed $w$-dimensional subspace $\operatorname{range}(W_{\mathrm{out}})$, any linear combination or root-mean-square aggregation over $(s,t_i)$ also has rank at most $\min(n,w)$.
+\end{proof}
+
+\begin{corollary}[Combined Bottleneck for Linear Reconstructors]
+\label{cor:combined_rank}
+When an LDNet with dynamics hidden width $w$ and latent dimension $n$ is paired with the affine modal reconstructor $\mathrm{L2}$ on $K$ modes, the dimension of the affine subspace of spatial fields $\hat{y}(\cdot,t) - \bar{y}$ reachable along all trajectories is bounded above by
+\begin{equation}
+  \dim \operatorname{span}\!\big\{\hat{y}^{(s)}(\cdot,t_i) - \bar{y}\big\} \le \begin{dcases}
+    \min(n + 1,\, w + 2,\, K) & \text{in Case B (where } u(t) \text{ enters } \mathbf{z}\text{ and no eq.\ offset is used)}, \\
+    \min(n,\, w,\, K) & \text{in Case C (where } \mathbf{z}=\mathbf{s} \text{ and eq.\ offset~\eqref{eq:equilibrium_offset} holds)}.
+  \end{dcases}
+  \label{eq:combined_rank_bound}
+\end{equation}
+\end{corollary}
+
+Proposition~\ref{prop:dyn_rank_bound} and Corollary~\ref{cor:combined_rank} explain one of the central empirical discoveries of Section~\ref{sec:rq2bis}: when $n$ is increased to $10$ in Case~B ($w^*=7$) or to $12$ and $24$ in Case~C ($w^*=8$) while keeping $\NNdyn$ at its canonical width $w^*$, the singular values $\sigma_k$ of the latent trajectories drop by $16$ orders of magnitude to machine epsilon ($\sim 10^{-16}\sigma_1$) for all $k > w^* + 1$ in Case~B and all $k > w^*$ in Case~C! Thus, expanding the latent space without simultaneously widening $\NNdyn$ ($w \ge n$) leaves the extra latent dimensions algebraically unreachable.
+
+\subsection{Training Regimes (\texorpdfstring{$\mathrm{R1}$}{R1} vs.\ \texorpdfstring{$\mathrm{R2}$}{R2}) and Optimization Structure}
+
+To disentangle whether a reconstructor fails because its function class cannot represent the spatial fields or because it cannot read the coordinate system chosen by $\NNdyn$, \texttt{RQ2} trains every modal variant ($\mathrm{L1}$--$\mathrm{L3}$) under two regimes:
+\begin{itemize}[leftmargin=2em]
+  \item \textbf{Regime R1 (Frozen Latents):} We first train the original LDNet ($\mathrm{L0}$) with configuration $(d_s, \text{seed})$, freeze its learned latent trajectories $\{\mathbf{s}_{\mathrm{L0}}^{(s)}(t_i)\}$ across all training, validation, and test samples, and fit only the parameters $\theta_{\mathrm{rec}}$ of the replacement reconstructor ($\mathrm{L2}$ or $\mathrm{L3}$; $\mathrm{L1}$ has no parameters and is simply evaluated). In Cases~A and~C, where the loss function is the mean squared error plus Tikhonov regularisation $\alpha_{\mathrm{reg}}\norm{\theta_{\mathrm{rec}}}_2^2$, fitting $\mathrm{L2}$ in Regime~$\mathrm{R1}$ is a \textbf{strictly convex ridge-regression problem} in $(W,\mathbf{b})$ with a unique global minimiser. Therefore, if $\mathrm{L2}$-$\mathrm{R1}$ performs poorly while $\mathrm{L2}$-$\mathrm{R2}$ performs well, optimization failure is ruled out: the frozen $\mathrm{L0}$ latent coordinates are provably curved (non-modal) representations of the physical modes.
+  \item \textbf{Regime R2 (End-to-End Training):} Both $\NNdyn$ and the reconstructor ($\mathrm{L0}$, $\mathrm{L1}$, $\mathrm{L2}$, or $\mathrm{L3}$) are initialized from scratch with the same seed and trained jointly. This allows $\NNdyn$ to align its latent coordinate system directly with the modal basis $\{\varphi_k\}$. In \texttt{RQ2-bis}, all experiments are conducted in the end-to-end regime $\mathrm{R2}$ using pure quasi-Newton BFGS optimization up to $10{,}000$ iterations.
+\end{itemize}
