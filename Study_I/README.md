@@ -91,7 +91,7 @@ $$
 \varepsilon_{\mathrm{proj}}(K)=\frac{\lVert (y-\bar y)-P_K(y-\bar y)\rVert}{\lVert y\rVert},
 $$
 
-with the norms taken over all test samples, times and points. The normalised root-mean-square error used by the LDNet paper is $`\mathrm{NRMSE}=\sqrt{\operatorname{mean}(\hat y-y)^2}\,/\,(\max y-\min y)`$. On a fixed test set the two are proportional, $`\mathrm{NRMSE}=c\,\varepsilon_{\mathrm{total}}`$, with $`c=0.1686`$ (A), $`0.0480`$ (B) and $`0.3484`$ (C); the script checks this proportionality on every run. The Pearson dissimilarity $`1-\rho`$ is reported as in the notebooks.
+with the norms taken over all test samples, times and points. The normalised root-mean-square error used by the LDNet paper is $`\mathrm{NRMSE}=\sqrt{\mathrm{mean}(\hat y-y)^2}\,/\,(\max y-\min y)`$. On a fixed test set the two are proportional, $`\mathrm{NRMSE}=c\,\varepsilon_{\mathrm{total}}`$, with $`c=0.1686`$ (A), $`0.0480`$ (B) and $`0.3484`$ (C); the script checks this proportionality on every run. The Pearson dissimilarity $`1-\rho`$ is reported as in the notebooks.
 
 ---
 
@@ -169,7 +169,7 @@ The best configuration of each procedure (a variant with a regime) is the pair $
 
 ### 2.8 Metrics
 
-The primary metrics are the NRMSE and $`1-\rho`$ of the notebooks, computed on denormalised fields; the relative error $`\varepsilon_{\mathrm{total}}`$, which divides by the energy of the field instead of by its range and is the natural unit for the floors; the efficiency ratio; and the per-mode error $`\lVert\hat c_k-c_k\rVert`$ over all test samples and times. Case B adds the **direction error** $`\operatorname{mean}\lVert\mathbf d(\hat{\mathbf v})-\mathbf d(\mathbf v)\rVert^2`$ with $`\mathbf d(\mathbf v)=\mathbf v/(10^{-4}+\lVert\mathbf v\rVert)`$ (the loss term of the original script), the **vorticity error** (relative $`L^2`$ error of $`\partial_xv_y-\partial_yv_x`$ by central differences), and the **extrapolation ratio** $`\varepsilon_{[20,40]}/\varepsilon_{[0,20]}`$. Case C adds the **activation-time error**, the mean absolute difference in milliseconds of the first time at which the potential reaches 0.5, over the grid points where the true front arrives. Cost is the number of reconstructor parameters, the training time, and the time to evaluate the reconstructor on the test latents.
+The primary metrics are the NRMSE and $`1-\rho`$ of the notebooks, computed on denormalised fields; the relative error $`\varepsilon_{\mathrm{total}}`$, which divides by the energy of the field instead of by its range and is the natural unit for the floors; the efficiency ratio; and the per-mode error $`\lVert\hat c_k-c_k\rVert`$ over all test samples and times. Case B adds the **direction error** $`\mathrm{mean}\lVert\mathbf d(\hat{\mathbf v})-\mathbf d(\mathbf v)\rVert^2`$ with $`\mathbf d(\mathbf v)=\mathbf v/(10^{-4}+\lVert\mathbf v\rVert)`$ (the loss term of the original script), the **vorticity error** (relative $`L^2`$ error of $`\partial_xv_y-\partial_yv_x`$ by central differences), and the **extrapolation ratio** $`\varepsilon_{[20,40]}/\varepsilon_{[0,20]}`$. Case C adds the **activation-time error**, the mean absolute difference in milliseconds of the first time at which the potential reaches 0.5, over the grid points where the true front arrives. Cost is the number of reconstructor parameters, the training time, and the time to evaluate the reconstructor on the test latents.
 
 The analyses of the trained L0 decoder in Sections 5.2–5.4 are additions to the protocol (its Section 9 describes them): the **linearizability index**
 
