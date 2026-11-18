@@ -30,6 +30,7 @@ KEYS = CFG + ['seed']
 CANON = {'B': dict(W=7, L=2, N=1, NL2=10, KL2=65, KREF=17),
          'C': dict(W=8, L=1, N=12, NL2=12, KL2=65, KREF=33)}
 COL = {'L0': 'tab:blue', 'L2': 'tab:red'}
+VLAB = {'L0': r'$\mathcal{R}_{\mathrm{MLP}}$', 'L2': r'$\mathcal{R}_{\mathrm{aff}}$'}
 plt.rcParams.update({'font.size': 9, 'axes.grid': True, 'grid.alpha': 0.3, 'figure.dpi': 110, 'savefig.dpi': 130})
 
 
@@ -405,7 +406,7 @@ def fig1_capacity_laws(runs):
                 ax = axs[row_i, col_i]
                 x = g[xcol].values
                 ax.errorbar(x, g.med, yerr=[g.med - g.lo, g.hi - g.med], fmt=mk + '-', color=COL[v], capsize=3, ms=5,
-                            label=f"{v} width sweep ($n={ds}$, $\\alpha={fit['alpha']:.2f}$ [{fit['ci_lo']:.2f},{fit['ci_hi']:.2f}])")
+                            label=f"{VLAB[v]} width sweep ($n={ds}$, $\\alpha={fit['alpha']:.2f}$ [{fit['ci_lo']:.2f},{fit['ci_hi']:.2f}])")
                 if row_i == 0:
                     px = np.geomspace(x.min(), x.max(), 100)
                     ax.plot(px, fit['einf'] + fit['a'] * px ** (-fit['alpha']), '--', color=COL[v], alpha=0.55)
@@ -416,7 +417,7 @@ def fig1_capacity_laws(runs):
             dg = dsub.groupby('depth').agg(dyn=('dyn_params', 'first'), ptot=('p_total', 'first'), med=('nrmse_test', 'median'))
             for row_i, xcol in enumerate(('dyn', 'ptot')):
                 if v == 'L0':
-                    axs[row_i, col_i].scatter(dg[xcol], dg.med, marker='^', s=55, c='navy', zorder=4, label='L0 depth $L\\in\\{1,3\\}$' if col_i == 0 else '_nolegend_')
+                    axs[row_i, col_i].scatter(dg[xcol], dg.med, marker='^', s=55, c='navy', zorder=4, label=r'$\mathcal{R}_{\mathrm{MLP}}$ depth $L\in\{1,3\}$' if col_i == 0 else '_nolegend_')
                     for Lval, rrow in dg.iterrows():
                         axs[row_i, col_i].annotate(f'L={Lval}', (rrow[xcol], rrow.med), xytext=(4, 4), textcoords='offset points', fontsize=7)
         for row_i, xlab in enumerate((r'dynamics parameters $P_{\rm dyn}$', r'total parameters $P_{\rm total}=P_{\rm dyn}+P_{\rm rec}$')):
@@ -446,7 +447,7 @@ def fig2_iteration_surface(runs):
                 ax.fill_between(q.index, q['min'], q['max'], color=cmap[c_i], alpha=0.12)
             ax.axvline(1000, color='gray', ls=':', lw=1.2, label='1000-iter laptop cap')
             ax.set(xscale='log', yscale='log', ylabel='test NRMSE',
-                   title=f'Case {k}, {v} ($n={ds}$, $L={cn["L"]}$): error vs BFGS iterations')
+                   title=f'Case {k}, {VLAB[v]} ($n={ds}$, $L={cn["L"]}$): error vs BFGS iterations')
             if row_i == 1:
                 ax.set_xlabel('completed BFGS iterations')
                 ax.set_xticks(cks); ax.set_xticklabels([str(x) for x in cks], rotation=30); ax.minorticks_off()
@@ -484,11 +485,11 @@ def fig3_cost_pareto(runs):
             ax = axs[row_i, col_i]
             for v, mk in (('L0', 'o'), ('L2', 's')):
                 t = g[g.variant == v]
-                ax.errorbar(t[xcol], t.med, yerr=[t.med - t.lo, t.hi - t.med], fmt=mk, color=COL[v], capsize=2.5, ms=5, alpha=0.85, label=f'{v} configs')
+                ax.errorbar(t[xcol], t.med, yerr=[t.med - t.lo, t.hi - t.med], fmt=mk, color=COL[v], capsize=2.5, ms=5, alpha=0.85, label=f'{VLAB[v]} configs')
                 pts = t[[xcol, 'med']].to_numpy()
                 par_mask = np.array([not np.any((pts[:, 0] <= p[0]) & (pts[:, 1] <= p[1]) & ((pts[:, 0] < p[0]) | (pts[:, 1] < p[1]))) for p in pts])
                 par = t[par_mask].sort_values(xcol)
-                ax.plot(par[xcol], par.med, '-', color=COL[v], lw=1.4, label=f'{v} Pareto front')
+                ax.plot(par[xcol], par.med, '-', color=COL[v], lw=1.4, label=f'{VLAB[v]} Pareto front')
             ax.set(xscale='log', yscale='log', xlabel=xlab, title=f'Case {k}: error vs {xcol}')
             if col_i == 0:
                 ax.set_ylabel('test NRMSE (median, min-max of 3 seeds)')
@@ -503,12 +504,12 @@ def fig4_linear_arm_sweeps(runs, FL):
     for row_i, k in enumerate(('B', 'C')):
         r = runs[k]
         cn = CANON[k]
-        # Panel 0: error vs latent size n (L0 vs L2, plus POD rank floor)
+        # Panel 0: error vs latent size n (R_MLP vs R_aff, plus POD rank floor)
         ax = axs[row_i, 0]
         for v, K, mk in (('L0', 0, 'o'), ('L2', cn['KL2'], 's')):
             sub = r[(r.variant == v) & (r.K == K) & (r.width == cn['W']) & (r.depth == cn['L'])]
             g = sub.groupby('d_s').nrmse_test.agg(['median', 'min', 'max']).sort_index()
-            ax.errorbar(g.index, g['median'], yerr=[g['median'] - g['min'], g['max'] - g['median']], fmt=mk + '-', color=COL[v], capsize=3, label=f'{v} ($K={K}$)' if K else 'L0')
+            ax.errorbar(g.index, g['median'], yerr=[g['median'] - g['min'], g['max'] - g['median']], fmt=mk + '-', color=COL[v], capsize=3, label=f'{VLAB[v]} ($K={K}$)' if K else VLAB['L0'])
         ns = sorted(r.d_s.unique())
         ranks = [d + 1 if k == 'B' else d for d in ns]
         rfloor = [FL[k]['pod'][rk - 1] * FL[k]['cnrmse'] for rk in ranks]
@@ -517,33 +518,33 @@ def fig4_linear_arm_sweeps(runs, FL):
                title=f'Case {k}: latent sweep ($w=w^*, L=L^*$)', xticks=ns, xticklabels=[str(x) for x in ns])
         ax.minorticks_off(); ax.legend(fontsize=7.5)
 
-        # Panel 1: width sweep L0 vs L2
+        # Panel 1: width sweep R_MLP vs R_aff
         ax = axs[row_i, 1]
         for v, K, ds, mk in (('L0', 0, cn['N'], 'o'), ('L2', cn['KL2'], cn['NL2'], 's')):
             sub = r[(r.variant == v) & (r.K == K) & (r.depth == cn['L']) & (r.d_s == ds)]
             g = sub.groupby('width').agg(dyn=('dyn_params', 'first'), med=('nrmse_test', 'median'), lo=('nrmse_test', 'min'), hi=('nrmse_test', 'max')).sort_index()
-            ax.errorbar(g.index, g.med, yerr=[g.med - g.lo, g.hi - g.med], fmt=mk + '-', color=COL[v], capsize=3, label=f'{v} ($n={ds}$)')
+            ax.errorbar(g.index, g.med, yerr=[g.med - g.lo, g.hi - g.med], fmt=mk + '-', color=COL[v], capsize=3, label=f'{VLAB[v]} ($n={ds}$)')
         ws = sorted(r.width.unique())
         nl2 = cn['NL2']
         ax.set(xscale='log', yscale='log', xlabel='dynamics hidden width $w$', ylabel='test NRMSE',
-               title=f'Case {k}: width sweep (L0 at $n^*$, L2 at $n_{{\\rm L2}}={nl2}$)', xticks=ws, xticklabels=[str(x) for x in ws])
+               title=f'Case {k}: width sweep ($\\mathcal{{R}}_{{\\mathrm{{MLP}}}}$ at $n^*$, $\\mathcal{{R}}_{{\\mathrm{{aff}}}}$ at $n_{{\\rm aff}}={nl2}$)', xticks=ws, xticklabels=[str(x) for x in ws])
         ax.minorticks_off(); ax.legend(fontsize=7.5)
 
-        # Panel 2: K sweep of L2 vs projection floor and rank floor
+        # Panel 2: K sweep of R_aff vs projection floor and rank floor
         ax = axs[row_i, 2]
         sub = r[(r.variant == 'L2') & (r.width == cn['W']) & (r.depth == cn['L']) & (r.d_s == cn['NL2'])]
         g = sub.groupby('K').agg(med=('eps_total_test', 'median'), lo=('eps_total_test', 'min'), hi=('eps_total_test', 'max'),
                                  fl=('eps_proj_test', 'first')).sort_index()
-        ax.errorbar(g.index, g.med, yerr=[g.med - g.lo, g.hi - g.med], fmt='s-', color=COL['L2'], capsize=3, label=f'L2 $\\varepsilon_{{\\rm total}}$ ($n={nl2}$)')
+        ax.errorbar(g.index, g.med, yerr=[g.med - g.lo, g.hi - g.med], fmt='s-', color=COL['L2'], capsize=3, label=f'{VLAB["L2"]} $\\varepsilon_{{\\rm total}}$ ($n={nl2}$)')
         Kall = np.arange(1, 66)
         ax.plot(Kall, FL[k]['basis'], ':', color='gray', lw=1.6, label='basis projection floor $\\varepsilon_{\\rm proj}(K)$')
         ax.plot(Kall, FL[k]['pod'], '--', color='tab:purple', lw=1.3, label='POD floor')
         rk = cn['NL2'] + (1 if k == 'B' else 0)
         ax.axhline(FL[k]['pod'][rk - 1], color='k', ls='-.', lw=1.2, label=f'POD rank floor ($r={rk}$)')
         l0_best = r[r.variant == 'L0'].groupby(CFG).eps_total_test.median().min()
-        ax.axhline(l0_best, color=COL['L0'], ls=':', lw=1.4, label='best L0 median $\\varepsilon_{\\rm total}$')
+        ax.axhline(l0_best, color=COL['L0'], ls=':', lw=1.4, label=r'best $\mathcal{R}_{\mathrm{MLP}}$ median $\varepsilon_{\rm total}$')
         ax.set(xscale='log', yscale='log', xlabel='number of modes $K$', ylabel=r'relative error $\varepsilon_{\rm total}$',
-               title=f'Case {k}: L2 $K$-sweep vs floors', xticks=[5, 17, 33, 65], xticklabels=['5', '17', '33', '65'])
+               title=f'Case {k}: $\\mathcal{{R}}_{{\\mathrm{{aff}}}}$ $K$-sweep vs floors', xticks=[5, 17, 33, 65], xticklabels=['5', '17', '33', '65'])
         ax.minorticks_off(); ax.legend(fontsize=7)
     fig.tight_layout()
     fig.savefig(FIG / 'fig4_linear_arm_sweeps.png')
@@ -555,7 +556,7 @@ def fig5_timing_and_scaling(runs, ts_data):
     # Top row: thread scaling (speedup, efficiency, s/eval)
     for k, c, mk in (('B', 'tab:blue', 'o'), ('C', 'tab:orange', 's')):
         df = ts_data[k][0]
-        axs[0, 0].plot(df.threads, df.s_per_eval, mk + '-', color=c, label=f'Case {k} (canonical L0)')
+        axs[0, 0].plot(df.threads, df.s_per_eval, mk + '-', color=c, label=f'Case {k} (canonical $\\mathcal{{R}}_{{\\mathrm{{MLP}}}}$)')
         axs[0, 1].plot(df.threads, df.speedup, mk + '-', color=c, label=f'Case {k}')
         axs[0, 2].plot(df.threads, df.efficiency, mk + '-', color=c, label=f'Case {k}')
     th = ts_data['B'][0].threads.values
@@ -563,13 +564,13 @@ def fig5_timing_and_scaling(runs, ts_data):
     axs[0, 0].set(xscale='log', yscale='log', xlabel='threads (Intel Xeon 8480+, 112 cores/node)', ylabel='seconds / evaluation',
                   title='Stage 5 Pass T: evaluation time vs threads', xticks=th, xticklabels=[str(x) for x in th])
     axs[0, 1].set(xscale='log', yscale='log', xlabel='threads', ylabel='speedup $T(1)/T(p)$',
-                  title='Parallel speedup (canonical L0)', xticks=th, xticklabels=[str(x) for x in th])
+                  title=r'Parallel speedup (canonical $\mathcal{R}_{\mathrm{MLP}}$)', xticks=th, xticklabels=[str(x) for x in th])
     axs[0, 2].set(xscale='log', xlabel='threads', ylabel='parallel efficiency $S(p)/p$',
                   title='Parallel efficiency (selected: 16 threads)', xticks=th, xticklabels=[str(x) for x in th], ylim=(0, 1.08))
     for j in range(3):
         axs[0, j].minorticks_off(); axs[0, j].legend(fontsize=8)
 
-    # Bottom row: H2 per-iter time vs P_dyn (B and C) and FLOPs verification
+    # Bottom row: per-iter time vs P_dyn (B and C) and FLOPs verification
     for col_i, k in enumerate(('B', 'C')):
         ax = axs[1, col_i]
         r = runs[k]
@@ -579,13 +580,13 @@ def fig5_timing_and_scaling(runs, ts_data):
             g = sub.groupby('width').agg(dyn=('dyn_params', 'first'),
                                          t_passA=('train_time_s', lambda s: np.median(s / sub.loc[s.index, 'n_iters'])),
                                          s_eval=('s_per_eval', 'first')).sort_index()
-            ax.plot(g.dyn, g.t_passA, mk + '-', color=COL[v], label=f'{v} Pass-A $t_{{\\rm iter}}$ ($n={ds}$)')
-            ax.plot(g.dyn, g.s_eval, mk + '--', color=COL[v], alpha=0.7, label=f'{v} Pass-T $s_{{\\rm eval}}$ (16 thr)')
+            ax.plot(g.dyn, g.t_passA, mk + '-', color=COL[v], label=f'{VLAB[v]} Pass-A $t_{{\\rm iter}}$ ($n={ds}$)')
+            ax.plot(g.dyn, g.s_eval, mk + '--', color=COL[v], alpha=0.7, label=f'{VLAB[v]} Pass-T $s_{{\\rm eval}}$ (16 thr)')
             t1, t0 = np.polyfit(g.dyn.values.astype(float), g.t_passA.values.astype(float), 1)
             px = np.linspace(g.dyn.min(), g.dyn.max(), 50)
             ax.plot(px, t0 + t1 * px, ':', color=COL[v], lw=1)
         ax.set(xlabel=r'dynamics parameters $P_{\rm dyn}$', ylabel='seconds per iteration / evaluation',
-               title=f'Case {k}: H2 cost split vs $P_{{\\rm dyn}}$')
+               title=f'Case {k}: cost split vs $P_{{\\rm dyn}}$')
         ax.legend(fontsize=7)
 
     ax = axs[1, 2]
@@ -593,7 +594,7 @@ def fig5_timing_and_scaling(runs, ts_data):
         r = runs[k].groupby(CFG).agg(flops=('flops_per_eval', 'first'), s_eval=('s_per_eval', 'first')).reset_index()
         for v in ('L0', 'L2'):
             t = r[r.variant == v]
-            ax.loglog(t.flops, t.s_eval, mk, color=COL[v], ms=6, alpha=0.85, label=f'Case {k} {v}')
+            ax.loglog(t.flops, t.s_eval, mk, color=COL[v], ms=6, alpha=0.85, label=f'Case {k} {VLAB[v]}')
     ax.set(xlabel='multiply-adds per evaluation (formula)', ylabel='measured $s_{\\rm eval}$ (Pass T, 16 threads)',
            title='Formula operations vs measured time')
     ax.legend(fontsize=7.5)
@@ -616,9 +617,9 @@ def fig6_budget_1000_vs_10000(runs):
             s1 = r1k[(r1k.variant == v) & (r1k.K == K) & (r1k.depth == cn['L']) & (r1k.d_s == ds)].groupby('width').nrmse_test.agg(['median', 'min', 'max']).sort_index()
             s10 = r10k[(r10k.variant == v) & (r10k.K == K) & (r10k.depth == cn['L']) & (r10k.d_s == ds)].groupby('width').nrmse_test.agg(['median', 'min', 'max']).sort_index()
             ax.errorbar(s1.index, s1['median'], yerr=[s1['median'] - s1['min'], s1['max'] - s1['median']],
-                        fmt=mk + '--', color=COL[v], alpha=0.55, capsize=3, label=f'{v} at 1000 BFGS iters (laptop)')
+                        fmt=mk + '--', color=COL[v], alpha=0.55, capsize=3, label=f'{VLAB[v]} at 1000 BFGS iters (laptop)')
             ax.errorbar(s10.index, s10['median'], yerr=[s10['median'] - s10['min'], s10['max'] - s10['median']],
-                        fmt=mk + '-', color=COL[v], capsize=3, lw=1.8, label=f'{v} at 10000 BFGS iters (cluster)')
+                        fmt=mk + '-', color=COL[v], capsize=3, lw=1.8, label=f'{VLAB[v]} at 10000 BFGS iters (cluster)')
         ws = sorted(r10k.width.unique())
         ax.set(xscale='log', yscale='log', xlabel='dynamics hidden width $w$', ylabel='test NRMSE (median, min-max)',
                title=f'Case {k}: 1000-iter cap vs 10000-iter cap', xticks=ws, xticklabels=[str(x) for x in ws])
@@ -638,8 +639,8 @@ def fig7_ranks_and_stalls(runs, rank_df):
             t = sub[sub.variant == v].sort_values('d_s')
             lmed = [np.median(eval(s)) for s in t.latent_ranks]
             jmed = [np.median(eval(s)) for s in t.jac_ranks]
-            ax.plot(t.d_s, lmed, mk + '-', color=COL[v], label=f'{v} latent rank $\\mathbf{{s}}(t)$')
-            ax.plot(t.d_s, jmed, mk + '--', color=COL[v], alpha=0.65, label=f'{v} Jacobian rank $\\partial\\dot\\mathbf{{s}}/\\partial\\mathbf{{s}}$')
+            ax.plot(t.d_s, lmed, mk + '-', color=COL[v], label=f'{VLAB[v]} latent rank $\\mathbf{{s}}(t)$')
+            ax.plot(t.d_s, jmed, mk + '--', color=COL[v], alpha=0.65, label=f'{VLAB[v]} Jacobian rank $\\partial\\dot\\mathbf{{s}}/\\partial\\mathbf{{s}}$')
         ds = sorted(sub.d_s.unique())
         ax.plot(ds, ds, 'k:', lw=1, label='full rank $=n$')
         ax.set(xlabel='latent dimension $n$', ylabel='effective rank (SV $>10^{-3}\\sigma_1$)',
@@ -655,9 +656,9 @@ def fig7_ranks_and_stalls(runs, rank_df):
             s_st = st[st.variant == v]
             s_fl = full[full.variant == v]
             if len(s_fl):
-                ax.scatter(s_fl.n_iters, s_fl.nrmse_test, marker=mk, c=col, alpha=0.35, s=25, label=f'Case {k} {v} (10000 iters)' if (k == 'B' or v == 'L2') else '_nolegend_')
+                ax.scatter(s_fl.n_iters, s_fl.nrmse_test, marker=mk, c=col, alpha=0.35, s=25, label=f'Case {k} {VLAB[v]} (10000 iters)' if (k == 'B' or v == 'L2') else '_nolegend_')
             if len(s_st):
-                ax.scatter(s_st.n_iters, s_st.nrmse_test, marker='X', c=col, edgecolors='k', s=65, zorder=5, label=f'Case {k} {v} stalled (<10000)')
+                ax.scatter(s_st.n_iters, s_st.nrmse_test, marker='X', c=col, edgecolors='k', s=65, zorder=5, label=f'Case {k} {VLAB[v]} stalled (<10000)')
     ax.set(xscale='log', yscale='log', xlabel='completed BFGS iterations $n_{\\rm iters}$', ylabel='test NRMSE',
            title='Early-stopped (stalled) vs full-budget runs')
     ax.legend(fontsize=7, loc='best')
@@ -678,8 +679,8 @@ def fig8_B_fields_and_errors(c, r):
     sp_l2 = np.linalg.norm(p_l2[0, t_idx], axis=-1).reshape(100, 100)
     vmax = sp_ref.max()
     for j, (mat, ttl) in enumerate(((sp_ref, 'FOM: $|\\mathbf{v}|$ at $t=30$ (extrap. half)'),
-                                    (sp_l0, f'best L0 ($w=7,n=5$, NRMSE {nrmse(p_l0, ref):.2e})'),
-                                    (sp_l2, f'best L2 ($K=65,w=28,n=10$, NRMSE {nrmse(p_l2, ref):.2e})'))):
+                                    (sp_l0, f'best $\\mathcal{{R}}_{{\\mathrm{{MLP}}}}$ ($w=7,n=5$, NRMSE {nrmse(p_l0, ref):.2e})'),
+                                    (sp_l2, f'best $\\mathcal{{R}}_{{\\mathrm{{aff}}}}$ ($K=65,w=28,n=10$, NRMSE {nrmse(p_l2, ref):.2e})'))):
         im = axs[0, j].imshow(mat, origin='lower', extent=[0, 1, 0, 1], vmin=0, vmax=vmax, cmap='magma')
         axs[0, j].set_title(ttl, fontsize=8.5); plt.colorbar(im, ax=axs[0, j])
 
@@ -687,11 +688,11 @@ def fig8_B_fields_and_errors(c, r):
     e_l2 = np.sqrt(np.mean(np.sum((p_l2 - ref) ** 2, axis=-1), axis=(0, 1))).reshape(100, 100)
     emax = max(e_l0.max(), e_l2.max())
     im0 = axs[1, 0].imshow((e_l0 - e_l2), origin='lower', extent=[0, 1, 0, 1], cmap='coolwarm', vmin=-emax, vmax=emax)
-    axs[1, 0].set_title('rms error difference: L0 minus L2 (>0: L2 better)', fontsize=8.5); plt.colorbar(im0, ax=axs[1, 0])
+    axs[1, 0].set_title(r'rms error difference: $\mathcal{R}_{\mathrm{MLP}}$ minus $\mathcal{R}_{\mathrm{aff}}$ (>0: $\mathcal{R}_{\mathrm{aff}}$ better)', fontsize=8.5); plt.colorbar(im0, ax=axs[1, 0])
     im1 = axs[1, 1].imshow(e_l0, origin='lower', extent=[0, 1, 0, 1], vmin=0, vmax=emax)
-    axs[1, 1].set_title(f'L0 time-avg rms error (max {e_l0.max():.2f})', fontsize=8.5); plt.colorbar(im1, ax=axs[1, 1])
+    axs[1, 1].set_title(f'$\\mathcal{{R}}_{{\\mathrm{{MLP}}}}$ time-avg rms error (max {e_l0.max():.2f})', fontsize=8.5); plt.colorbar(im1, ax=axs[1, 1])
     im2 = axs[1, 2].imshow(e_l2, origin='lower', extent=[0, 1, 0, 1], vmin=0, vmax=emax)
-    axs[1, 2].set_title(f'L2 time-avg rms error (max {e_l2.max():.2f})', fontsize=8.5); plt.colorbar(im2, ax=axs[1, 2])
+    axs[1, 2].set_title(f'$\\mathcal{{R}}_{{\\mathrm{{aff}}}}$ time-avg rms error (max {e_l2.max():.2f})', fontsize=8.5); plt.colorbar(im2, ax=axs[1, 2])
     fig.tight_layout()
     fig.savefig(FIG / 'fig8_B_fields_and_errors.png')
     plt.close(fig)
@@ -705,9 +706,9 @@ def fig9_C_fronts_comparison(c, r):
     ref = c.Yte
     samples = [0, 4, 11]
     preds = [('FOM', ref),
-             (f'best L0 ($w=8,L=3,n=12$, NRMSE {nrmse(p_l0, ref):.2e})', p_l0),
-             (f'best L2 ($K=65,w=8,n=24$, NRMSE {nrmse(p_l2, ref):.2e})', p_l2),
-             ('pointwise error $|\\hat u_{\\rm L2}-u|$', np.abs(p_l2 - ref))]
+             (f'best $\\mathcal{{R}}_{{\\mathrm{{MLP}}}}$ ($w=8,L=3,n=12$, NRMSE {nrmse(p_l0, ref):.2e})', p_l0),
+             (f'best $\\mathcal{{R}}_{{\\mathrm{{aff}}}}$ ($K=65,w=8,n=24$, NRMSE {nrmse(p_l2, ref):.2e})', p_l2),
+             (r'pointwise error $|\hat{y}_{\mathrm{aff}} - y|$', np.abs(p_l2 - ref))]
     fig, axs = plt.subplots(len(samples), 4, figsize=(13, 7.8))
     for i, s in enumerate(samples):
         for j, (name, p) in enumerate(preds):

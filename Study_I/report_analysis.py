@@ -25,6 +25,9 @@ KEYS = ['variant', 'regime', 'd_s', 'K', 'seed']
 CONFIG = ['variant', 'regime', 'd_s', 'K']
 D_REF = {'A': 3, 'B': 10, 'C': 12}            # latent size used in the K-sweep figure of each case
 COL = {'L0': 'k', 'L1': 'tab:green', 'L2': 'tab:blue', 'L3': 'tab:red'}
+VLAB = {'L0': r'$\mathcal{R}_{\mathrm{MLP}}$', 'L1': r'$\mathcal{R}_{\mathrm{id}}$',
+        'L2': r'$\mathcal{R}_{\mathrm{aff}}$', 'L3': r'$\mathcal{R}_{\mathrm{nl}}$'}
+RLAB = {'R1': 'Frozen', 'R2': 'E2E'}
 plt.rcParams.update({'font.size': 9, 'axes.grid': True, 'grid.alpha': 0.3, 'figure.dpi': 110, 'savefig.dpi': 130})
 
 
@@ -335,7 +338,7 @@ def band(df, col, x='K'):
 
 
 def fig_error_vs_K(runs, FL, CN, LIN):
-    """The main RQ2 figure: test NRMSE of L2 and L3 against K (median and range over the 3 seeds), with the projection floors and the L0 band."""
+    """The main Study I figure: test NRMSE of R_aff and R_nl against K (median and range over the 3 seeds), with the projection floors and the R_MLP band."""
     fig, axs = plt.subplots(1, 3, figsize=(15, 5.4))
     for ax, k in zip(axs, 'ABC'):
         r, d = runs[k], D_REF[k]
@@ -343,18 +346,18 @@ def fig_error_vs_K(runs, FL, CN, LIN):
             for reg, ls, mk in (('R2', '-', 'o'), ('R1', '--', 's')):
                 q = r[(r.variant == v) & (r.regime == reg) & (r.d_s == d)]
                 m, lo, hi = band(q, 'nrmse_test')
-                ax.plot(m.index, m, ls=ls, marker=mk, ms=4, c=COL[v], label=f'{v}-{reg}')
+                ax.plot(m.index, m, ls=ls, marker=mk, ms=4, c=COL[v], label=f'{VLAB[v]} ({RLAB[reg]})')
                 ax.fill_between(m.index, lo, hi, color=COL[v], alpha=0.12)
         for reg, mk in (('R2', 'o'), ('R1', 's')):
             q = r[(r.variant == 'L1') & (r.regime == reg) & (r.d_s == d)].nrmse_test
             ax.errorbar([d], [q.median()], yerr=[[q.median() - q.min()], [q.max() - q.median()]], fmt=mk, c=COL['L1'], mfc='none' if reg == 'R1' else COL['L1'],
-                        ms=7, capsize=3, label=f'L1-{reg} ($K=d_s$)')
+                        ms=7, capsize=3, label=f'{VLAB["L1"]} ({RLAB[reg]}, $K=d_s$)')
         q = r[(r.variant == 'L0') & (r.d_s == d)].nrmse_test
         ax.axhspan(q.min(), q.max(), color='k', alpha=0.15)
-        ax.axhline(q.median(), c='k', lw=1.2, label='L0 (median, range of 3 seeds)')
+        ax.axhline(q.median(), c='k', lw=1.2, label=r'$\mathcal{R}_{\mathrm{MLP}}$ (median, range of 3 seeds)')
         lin = LIN[k][0]
         lin = lin[lin.d_s == d].groupby('K').nrmse_proj.median()
-        ax.plot(lin.index, lin, 'k-.', lw=1, label='L0 output projected on $K$ modes')
+        ax.plot(lin.index, lin, 'k-.', lw=1, label=r'$P_K\mathcal{R}_{\mathrm{MLP}}$ ($\mathcal{R}_{\mathrm{MLP}}$ on $K$ modes)')
         Kall = np.arange(1, 66)
         ax.plot(Kall, np.maximum(FL[k]['basis'], 1e-13) * CN[k], ':', c='gray', lw=1.8, label='floor, protocol basis')
         ax.plot(Kall, np.maximum(FL[k]['pod'], 1e-13) * CN[k], ':', c='tab:purple', lw=1.8, label='floor, POD')
@@ -369,13 +372,16 @@ def fig_error_vs_K(runs, FL, CN, LIN):
 
 
 def fig_rank_bound(runs, FL, CN):
-    """eps_total against the latent size d_s: L0, L1, and L2/L3 (K chosen on validation), against the best possible linear decoder of rank d_s."""
+    """eps_total against the latent size d_s: R_MLP, R_id, and R_aff/R_nl (K chosen on validation), against the best possible linear decoder of rank d_s."""
     fig, axs = plt.subplots(1, 3, figsize=(15, 4.8))
     rows = []
     for ax, k in zip(axs, 'ABC'):
         r = runs[k]
         ds = sorted(r.d_s.unique())
-        for v, reg, lab in (('L0', 'R2', 'L0'), ('L1', 'R2', 'L1-R2'), ('L2', 'R2', 'L2-R2'), ('L3', 'R2', 'L3-R2')):
+        for v, reg, lab, plab in (('L0', 'R2', 'L0', r'$\mathcal{R}_{\mathrm{MLP}}$'),
+                                 ('L1', 'R2', 'L1-R2', r'$\mathcal{R}_{\mathrm{id}}$ (E2E)'),
+                                 ('L2', 'R2', 'L2-R2', r'$\mathcal{R}_{\mathrm{aff}}$ (E2E)'),
+                                 ('L3', 'R2', 'L3-R2', r'$\mathcal{R}_{\mathrm{nl}}$ (E2E)')):
             y = []
             for d in ds:
                 q = r[(r.variant == v) & (r.regime == reg) & (r.d_s == d)]
@@ -383,7 +389,7 @@ def fig_rank_bound(runs, FL, CN):
                 q = q[q.K == med.idxmin()]
                 y.append(q.eps_total_test.median())
                 rows.append(dict(case=k, proc=lab, d_s=d, K=int(q.K.iloc[0]), eps_total=y[-1], nrmse=y[-1] * CN[k]))
-            ax.plot(ds, y, 'o-', c=COL[v], label=lab)
+            ax.plot(ds, y, 'o-', c=COL[v], label=plab)
         rank = [d + 1 if k == 'B' else d for d in ds]
         floor = [FL[k]['pod'][q - 1] for q in rank]
         ax.plot(ds, np.maximum(floor, 1e-3), 'k--', lw=1.6, label='best linear decoder of rank $d_s$' + (' (+1 for $u$)' if k == 'B' else ''))
@@ -420,8 +426,9 @@ def fig_pareto(runs):
     for ax, k in zip(axs, 'ABC'):
         g = runs[k].groupby(CONFIG).agg(p=('rec_params', 'median'), e=('nrmse_test', 'median')).reset_index()
         for (v, reg), q in g.groupby(['variant', 'regime']):
-            ax.scatter(np.maximum(q.p, 1), q.e, s=22, c=COL[v], marker='o' if reg == 'R2' else 'x', alpha=0.8, label=f'{v}-{reg}')
-        ax.set(xscale='log', yscale='log', xlabel='parameters of the reconstructor (L1: none, drawn at 1)', ylabel='test NRMSE (median of 3 seeds)', title=f'case {k}')
+            lab = VLAB['L0'] if v == 'L0' else f'{VLAB[v]} ({RLAB[reg]})'
+            ax.scatter(np.maximum(q.p, 1), q.e, s=22, c=COL[v], marker='o' if reg == 'R2' else 'x', alpha=0.8, label=lab)
+        ax.set(xscale='log', yscale='log', xlabel=r'parameters of the reconstructor ($\mathcal{R}_{\mathrm{id}}$: none, drawn at 1)', ylabel='test NRMSE (median of 3 seeds)', title=f'case {k}')
     axs[0].legend(fontsize=7, ncol=2)
     fig.tight_layout()
     fig.savefig(FIG / 'fig5_pareto.png')
@@ -447,7 +454,10 @@ def fig_modes(cases, runs):
                 continue
             e = g.assign(e2=g.err_abs ** 2).groupby('mode').e2.mean().sort_index()
             col, ls = sty[(v, reg)]
-            ax.semilogy(e.index[:kmax], np.maximum(e.values[:kmax] / tot, 1e-16), ls, c=col, marker='.', label=f'{v}-{reg} ($d_s$={d}' + (f', $K$={K})' if K else ')'))
+            prefix = VLAB['L0'] if v == 'L0' else f'{VLAB[v]} ({RLAB[reg]}'
+            suffix = (f', $d_s$={d}' if v == 'L0' else f', $d_s$={d}') + (f', $K$={K}' if K else '') + ('' if v == 'L0' else ')')
+            lbl = f'{VLAB["L0"]} ($d_s$={d})' if v == 'L0' else f'{VLAB[v]} ({RLAB[reg]}, $d_s$={d}' + (f', $K$={K})' if K else ')')
+            ax.semilogy(e.index[:kmax], np.maximum(e.values[:kmax] / tot, 1e-16), ls, c=col, marker='.', label=lbl)
         ax.set(xlabel='mode $k$', ylabel='squared error in mode $k$ / FOM energy', title=f'case {k}: where the error lives')
         ax.set_ylim({'A': (1e-12, 1.0), 'B': (1e-9, 1.0), 'C': (1e-7, 1.0)}[k])
         ax.legend(fontsize=6, loc='lower left')
@@ -457,12 +467,13 @@ def fig_modes(cases, runs):
 
 
 def fig_C_decoders(c, r):
-    """Case C: the same frozen L0 latents (d_s = 5) read by four decoders, on three test samples (rows: samples; columns: FOM, L0, L3-R1, L2-R1)."""
+    """Case C: the same frozen R_MLP latents (d_s = 5) read by four decoders, on three test samples."""
     d = 5
     seed, w3 = best_seed(r, 'L3', 'R1', d, 17)
     z, lrec = l0_run(c, d, seed)
-    preds = {'FOM': c.Yte, 'L0': l0_decode(c, z, lrec),
-             'L3-R1, $K$=17': r1_decode(c, 'L3', d, 17, seed, w3), 'L2-R1, $K$=33': r1_decode(c, 'L2', d, 33, seed, 0)}
+    preds = {'FOM': c.Yte, r'$\mathcal{R}_{\mathrm{MLP}}$': l0_decode(c, z, lrec),
+             r'$\mathcal{R}_{\mathrm{nl}}$ (Frozen, $K$=17)': r1_decode(c, 'L3', d, 17, seed, w3),
+             r'$\mathcal{R}_{\mathrm{aff}}$ (Frozen, $K$=33)': r1_decode(c, 'L2', d, 33, seed, 0)}
     samples = [0, 4, 11]
     fig, axs = plt.subplots(len(samples), 4, figsize=(11, 8))
     for i, s in enumerate(samples):
@@ -485,11 +496,12 @@ def direction(v):
 
 
 def fig_B_maps(c, r):
-    """Case B: where the errors are. FOM mean speed, rms velocity error and mean direction error, L0 against L3-R1 (d_s = 10, K = 10)."""
+    """Case B: where the errors are. FOM mean speed, rms velocity error and mean direction error, R_MLP against R_nl (Frozen, d_s = 10, K = 10)."""
     plt.rcParams['axes.grid'] = False                                  # (colour bars + grid trigger a matplotlib deprecation warning)
     seed, w3 = best_seed(r, 'L3', 'R1', 10, 10)
     z, lrec = l0_run(c, 10, seed)
-    P = {'L0 ($d_s$=10)': l0_decode(c, z, lrec), 'L3-R1 ($d_s$=10, $K$=10)': r1_decode(c, 'L3', 10, 10, seed, w3)}
+    P = {r'$\mathcal{R}_{\mathrm{MLP}}$ ($d_s$=10)': l0_decode(c, z, lrec),
+         r'$\mathcal{R}_{\mathrm{nl}}$ (Frozen, $d_s$=10, $K$=10)': r1_decode(c, 'L3', 10, 10, seed, w3)}
     ref = c.Yte
     dref = direction(ref)
     fig, axs = plt.subplots(2, 3, figsize=(12.5, 7.6))
@@ -504,9 +516,9 @@ def fig_B_maps(c, r):
         de2 = np.sum((direction(p) - dref) ** 2, axis=-1) / 2
         de = de2.mean(axis=(0, 1)).reshape(100, 100)
         im = axs[0, j + 1].imshow(e, origin='lower', extent=[0, 1, 0, 1]); plt.colorbar(im, ax=axs[0, j + 1])
-        axs[0, j + 1].set_title(name + f': rms velocity error (max {e.max():.2f})', fontsize=9)
+        axs[0, j + 1].set_title(name + f': rms vel. error (max {e.max():.2f})', fontsize=8)
         im = axs[1, j + 1].imshow(de, origin='lower', extent=[0, 1, 0, 1], vmax=0.5); plt.colorbar(im, ax=axs[1, j + 1])
-        axs[1, j + 1].set_title(name + ': mean direction error')
+        axs[1, j + 1].set_title(name + ': mean dir. error', fontsize=8)
         share = lambda m: de2[m].sum() / de2.sum()
         out.append(dict(model=name, share_low_speed_0p1=share(mag < 0.1), frac_points_low_speed=float((mag < 0.1).mean()),
                         share_speed_below_0p01=share(mag < 0.01),
@@ -529,7 +541,7 @@ def fig_A_latents(c):
     for j in range(3):
         s = np.load(ROOT / DIRS['A'] / 'results' / 'latents' / f'L0_ds2_seed{j}.npz')['test'].reshape(-1, 2)
         axs[j + 1].scatter(s[:, 0], s[:, 1], s=1, alpha=0.3, c=ph, cmap='hsv')
-        axs[j + 1].set(title=f'L0 latents, seed {j}', xlabel='$s_1$', ylabel='$s_2$')
+        axs[j + 1].set(title=f'$\\mathcal{{R}}_{{\\mathrm{{MLP}}}}$ latents, seed {j}', xlabel='$s_1$', ylabel='$s_2$')
     for ax in axs:
         ax.grid(False)
     fig.tight_layout()
