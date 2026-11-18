@@ -57,12 +57,20 @@ The full technical report is provided at the root of this repository:
 
 | Study | Scope | Benchmarks | Key Result |
 |---|---|---|---|
-| **Study I** (`Study_I/`) | Four reconstructor architectures ($\mathcal{R}_{\mathrm{MLP}}$ [`L0`], $\mathcal{R}_{\mathrm{id}}$ [`L1`], $\mathcal{R}_{\mathrm{aff}}$ [`L2`], $\mathcal{R}_{\mathrm{nl}}$ [`L3`]) under Frozen-Latent (`R1`) and End-to-End (`R2`) training (816 runs) | Case A (`Case_A_ADR-1b`), Case B (`Case_B_2D-Stokes`), Case C (`Case_C_AP1D`) | Fixed-basis linear decoders match or beat $\mathcal{R}_{\mathrm{MLP}}$ when the Kolmogorov $n$-width decays rapidly (Cases A & B), while $\mathcal{R}_{\mathrm{MLP}}$ learns curved latent coordinates in smooth PDEs and is essential to break the Kolmogorov barrier on sharp moving fronts (Case C, intrinsic threshold $d_s = 3$). |
-| **Study II** (`Study_II/`) | Pure BFGS up to $10{,}000$ iterations on CINECA Leonardo DCGP (`dcgp_usr_prod`, dual-socket Intel Xeon Platinum 8480+, 112 cores/node) + exclusive-node Pass-T timing (126 cluster runs) | Case B (`Case_B_2D-Stokes`), Case C (`Case_C_AP1D`) | **Case B:** replacing $\mathcal{R}_{\mathrm{MLP}}$ with $\mathcal{R}_{\mathrm{aff}}$ (POD) and widening $\mathrm{NN}_{\mathrm{dyn}}$ ($w=28, n=10, K=65$) lowers test NRMSE $2.5\times$ ($2.32\cdot 10^{-3}$ vs. $5.86\cdot 10^{-3}$), iso-accuracy FLOPs by $54\times$–$150\times$ ($56\times$–$167\times$ training-only), wall-time by $10.2\times$–$11.8\times$, and inference time by $78\times$, while preserving discrete divergence. **Case C:** $\mathcal{R}_{\mathrm{MLP}}$ with deeper $\mathrm{NN}_{\mathrm{dyn}}$ ($L=3$) reaches $7.83\cdot 10^{-3}$ ($0.54\text{ ms}$ front arrival MAE) on a rank 2–5 curved manifold, whereas $\mathcal{R}_{\mathrm{aff}}$ stalls at $\approx 0.10$ and overfits sparse spatial samples. |
+| **Study I** (`Study_I/`) | Four reconstructor architectures ($`\mathcal{R}_{\mathrm{MLP}}`$ [`L0`], $`\mathcal{R}_{\mathrm{id}}`$ [`L1`], $`\mathcal{R}_{\mathrm{aff}}`$ [`L2`], $`\mathcal{R}_{\mathrm{nl}}`$ [`L3`]) under Frozen-Latent (`R1`) and End-to-End (`R2`) training (816 runs) | Case A (`Case_A_ADR-1b`), Case B (`Case_B_2D-Stokes`), Case C (`Case_C_AP1D`) | Fixed-basis linear decoders match or beat $`\mathcal{R}_{\mathrm{MLP}}`$ when the Kolmogorov $`n`$-width decays rapidly (Cases A & B), while $`\mathcal{R}_{\mathrm{MLP}}`$ learns curved latent coordinates in smooth PDEs and is essential to break the Kolmogorov barrier on sharp moving fronts (Case C, intrinsic threshold $`d_s = 3`$). |
+| **Study II** (`Study_II/`) | Pure BFGS up to 10,000 iterations on CINECA Leonardo DCGP (`dcgp_usr_prod`, dual-socket Intel Xeon Platinum 8480+, 112 cores/node) + exclusive-node Pass-T timing (126 cluster runs) | Case B (`Case_B_2D-Stokes`), Case C (`Case_C_AP1D`) | **Case B:** replacing $`\mathcal{R}_{\mathrm{MLP}}`$ with $`\mathcal{R}_{\mathrm{aff}}`$ (POD) and widening $`\mathrm{NN}_{\mathrm{dyn}}`$ ($`w=28, n=10, K=65`$) lowers test NRMSE 2.5× ($`2.32\cdot 10^{-3}`$ vs. $`5.86\cdot 10^{-3}`$), iso-accuracy FLOPs by 54×–150× (56×–167× training-only), wall-time by 10.2×–11.8×, and inference time by 78×, while preserving discrete divergence. **Case C:** $`\mathcal{R}_{\mathrm{MLP}}`$ with deeper $`\mathrm{NN}_{\mathrm{dyn}}`$ ($`L=3`$) reaches $`7.83\cdot 10^{-3}`$ (0.54 ms front arrival MAE) on a rank 2–5 curved manifold, whereas $`\mathcal{R}_{\mathrm{aff}}`$ stalls at ≈ 0.10 and overfits sparse spatial samples. |
 
 Two structural rank bounds proved in `Report.pdf` are verified to machine precision:
-1. **Reconstructor Rank Bound** (for $\mathcal{R}_{\mathrm{aff}}$): $\operatorname{rank}(\hat{y}-\bar{y}) \le \min(\dim \mathbf{z}, K)$.
-2. **Dynamics Hidden-Width Bottleneck Bound**: $\operatorname{rank}(\{\mathbf{s}_s^i\}),\,\operatorname{rank}(\partial \dot{\mathbf{s}} / \partial \mathbf{s}) \le \min(n, w_{\mathrm{dyn}})$ under exact rest-state equilibrium subtraction (and $\le \min(n, w_{\mathrm{dyn}}+1)$ without it).
+
+1. **Reconstructor Rank Bound** (for $`\mathcal{R}_{\mathrm{aff}}`$):
+
+$$\operatorname{rank}(\hat{y}-\bar{y}) \le \min(\dim \mathbf{z}, K)$$
+
+2. **Dynamics Hidden-Width Bottleneck Bound**:
+
+$$\operatorname{rank}(\{\mathbf{s}_s^i\}),\ \operatorname{rank}\!\left(\frac{\partial \dot{\mathbf{s}}}{\partial \mathbf{s}}\right) \le \min(n, w_{\mathrm{dyn}})$$
+
+under exact rest-state equilibrium subtraction (and $`\le \min(n, w_{\mathrm{dyn}}+1)`$ without it).
 
 ---
 
