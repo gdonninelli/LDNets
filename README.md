@@ -64,11 +64,15 @@ Two structural rank bounds proved in `Report.pdf` are verified to machine precis
 
 1. **Reconstructor Rank Bound** (for $`\mathcal{R}_{\mathrm{aff}}`$):
 
-$$\mathrm{rank}(\hat{y}-\bar{y}) \le \min(\dim \mathbf{z}, K)$$
+```math
+\mathrm{rank}(\hat{y}-\bar{y}) \le \min(\dim \mathbf{z}, K)
+```
 
 2. **Dynamics Hidden-Width Bottleneck Bound**:
 
-$$\mathrm{rank}(\{\mathbf{s}_s^i\}),\ \mathrm{rank}\!\left(\frac{\partial \dot{\mathbf{s}}}{\partial \mathbf{s}}\right) \le \min(n, w_{\mathrm{dyn}})$$
+```math
+\mathrm{rank}(\{\mathbf{s}_s^i\}),\ \mathrm{rank}\!\left(\frac{\partial \dot{\mathbf{s}}}{\partial \mathbf{s}}\right) \le \min(n, w_{\mathrm{dyn}})
+```
 
 under exact rest-state equilibrium subtraction (and $`\le \min(n, w_{\mathrm{dyn}}+1)`$ without it).
 
