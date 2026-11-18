@@ -1,5 +1,8 @@
 data
 materials
+.venv/
+.opencode/
+.DS_Store
 
 *.pyc
 __pycache__/
@@ -9,3 +12,15 @@ dist/
 *.egg-info
 *.npy
 *.npz
+
+# LaTeX sources and build artifacts (compiled Report.pdf lives at repo root)
+paper/*.tex
+paper/*.bib
+paper/*.bbl
+paper/*.blg
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.fls
+paper/*.fdb_latexmk
+paper/main.pdf

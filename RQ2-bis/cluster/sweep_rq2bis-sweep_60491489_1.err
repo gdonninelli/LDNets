@@ -1,4 +1,0 @@
-[NbConvertApp] Converting notebook TestCase_C_bis.ipynb to notebook
-/leonardo_work/EUHPC_D35_025/venvs/ldnets311/lib/python3.11/site-packages/nbformat/validator.py:434: MissingIDFieldWarning: Cell is missing an id field, this will become a hard error in future nbformat versions. You may want to use `normalize()` on your notebooks before validations (available since nbformat 5.1.4). Previous versions of nbformat are fixing this issue transparently, and will stop doing so in the future.
-  _validate(nbdict, ref, version, version_minor, relax_add_props)
-[NbConvertApp] Writing 125420 bytes to executed_shard1.ipynb

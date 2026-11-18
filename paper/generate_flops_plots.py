@@ -19,7 +19,7 @@ plt.rcParams.update({
 
 
 def load_case(folder):
-    res = ROOT / "RQ2-bis" / folder / "results"
+    res = ROOT / "Study_II" / folder / "results"
     runs = pd.read_csv(res / "runs.csv")
     curves = pd.read_csv(res / "curves.csv")
     timing = pd.read_csv(res / "timing.csv")
@@ -58,11 +58,23 @@ def anytime_pareto(df, xcol, ycol="nrmse_test"):
     return np.array(front)
 
 
-runs_B, curves_B, timing_B = load_case("2D-Stokes")
-runs_C, curves_C, timing_C = load_case("ADR-1b")
+runs_B, curves_B, timing_B = load_case("Case_B_2D-Stokes")
+runs_C, curves_C, timing_C = load_case("Case_C_AP1D")
+
+# Offline one-off basis setup cost (Section 6.1):
+# Case B POD: mean+centering (1.952e8) + Gram Z@Z.T (2*M^2*N_dof) + mode proj (2*N_dof*M*K) + eigh O(M^3) midpoint (~6.17*M^3)
+# Case C Legendre + weighted QR / Modified Gram-Schmidt: mean (5.06e6) + Vandermonde (2.63e4) + Householder QR (1.34e6)
+def basis_setup_cost(case_name, K_series):
+    if case_name.startswith("Case B"):
+        M, N_dof = 1680, 20000
+        eigh_mid = 0.5 * (10.0 / 3.0 + 9.0) * (M ** 3)  # midpoint of [10/3, 9]*M^3 ~ 2.92e10
+        flops_pod = (80 * 101 + M) * N_dof + 2 * (M ** 2) * N_dof + 2 * N_dof * M * K_series + eigh_mid
+        return flops_pod, 1.95
+    return np.full(len(K_series), 6.43e6, dtype=float), 1e-3
+
 
 # Figure 1: Continuous FLOPs and Pass-T wall-time trajectories across checkpoints
-fig, axes = plt.subplots(2, 2, figsize=(11.5, 8.2))
+fig, axes = plt.subplots(2, 2, figsize=(11.5, 7.6))
 
 for row, (case_label, curves, runs) in enumerate([
     ("Case B (2D Navier-Stokes cavity)", curves_B, runs_B),
@@ -77,27 +89,34 @@ for row, (case_label, curves, runs) in enumerate([
             nrmse_valid=("nrmse_valid", "median"),
         )
     )
-    for col, (xcol, xlabel) in enumerate([
-        ("flops_cum", "Cumulative training operations (FLOPs = $n_{\\mathrm{fev}} \\times \\mathrm{FLOPs}_{\\mathrm{eval}}$)"),
-        ("time_T_cum", "Cumulative Pass-T training wall-time $n_{\\mathrm{fev}} \\times s_{\\mathrm{eval}}$ [s] (16 threads)"),
+    med_c["flops_total_inc"] = med_c["flops_cum"]
+    med_c["time_T_inc"] = med_c["time_T_cum"]
+    l2_mask = med_c["variant"] == "L2"
+    f_setup, t_setup = basis_setup_cost(case_label, med_c.loc[l2_mask, "K"].to_numpy())
+    med_c.loc[l2_mask, "flops_total_inc"] += f_setup
+    med_c.loc[l2_mask, "time_T_inc"] += t_setup
+
+    for col, (xcol_inc, xcol_train, xlabel) in enumerate([
+        ("flops_total_inc", "flops_cum", "Cumulative operations (FLOPs = $n_{\\mathrm{fev}} \\times \\mathrm{FLOPs}_{\\mathrm{eval}} + \\mathrm{FLOPs}_{\\mathrm{basis}}$)"),
+        ("time_T_inc", "time_T_cum", "Cumulative Pass-T wall-time $n_{\\mathrm{fev}} s_{\\mathrm{eval}} + T_{\\mathrm{basis}}$ [s]"),
     ]):
         ax = axes[row, col]
         for variant, color, marker, label_prefix in [
-            ("L0", "#1f77b4", "o", "L0 (nonlinear MLP)"),
-            ("L2", "#d62728", "s", "L2 (linear basis)"),
+            ("L0", "#1f77b4", "o", "$\\mathcal{R}_{\\mathrm{MLP}}$ (pointwise MLP)"),
+            ("L2", "#d62728", "s", "$\\mathcal{R}_{\\mathrm{aff}}$ (affine modal)"),
         ]:
             sub = med_c[med_c["variant"] == variant]
             for _, grp in sub.groupby(["K", "width", "depth", "d_s"]):
                 grp = grp.sort_values("iter")
                 ax.plot(
-                    grp[xcol],
+                    grp[xcol_inc],
                     grp["nrmse_test"],
                     color=color,
                     alpha=0.25,
                     lw=1.0,
                 )
                 ax.scatter(
-                    grp[xcol].iloc[-1],
+                    grp[xcol_inc].iloc[-1],
                     grp["nrmse_test"].iloc[-1],
                     color=color,
                     marker=marker,
@@ -105,15 +124,30 @@ for row, (case_label, curves, runs) in enumerate([
                     alpha=0.85,
                     zorder=4,
                 )
-            front = anytime_pareto(sub, xcol, "nrmse_test")
+            if variant == "L2" and case_label.startswith("Case B"):
+                front_train = anytime_pareto(sub, xcol_train, "nrmse_test")
+                if len(front_train) > 0:
+                    ax.step(
+                        front_train[:, 0],
+                        front_train[:, 1],
+                        where="post",
+                        color=color,
+                        ls="--",
+                        lw=1.4,
+                        alpha=0.8,
+                        label=f"{label_prefix} Pareto (train-only)",
+                        zorder=4,
+                    )
+            front = anytime_pareto(sub, xcol_inc, "nrmse_test")
             if len(front) > 0:
+                suffix = " Pareto (incl. basis setup)" if variant == "L2" else " anytime Pareto envelope"
                 ax.step(
                     front[:, 0],
                     front[:, 1],
                     where="post",
                     color=color,
                     lw=2.2,
-                     label=f"{label_prefix} anytime Pareto envelope",
+                    label=f"{label_prefix}{suffix}",
                     zorder=5,
                 )
         ax.set_xscale("log")
@@ -129,11 +163,9 @@ fig.savefig(OUT / "fig_flops_trajectories.png", bbox_inches="tight")
 plt.close(fig)
 
 # Figure 2: Arithmetic intensity, GFLOP/s throughput, and decomposed FLOPs
-fig, axes = plt.subplots(1, 3, figsize=(13.2, 4.2))
+fig, axes = plt.subplots(1, 3, figsize=(13.2, 4.0))
 
-# Panel (a): Decomposed FLOPs per evaluation (dynamics vs reconstructor)
 ax = axes[0]
-# Case B: S=80, T=101, Nx=200; Case C: S=100, T=501, Nx=20
 for case_name, runs, S, T, Nx, ncomp, marker in [
     ("Case B", runs_B, 80, 101, 200, 2, "o"),
     ("Case C", runs_C, 100, 501, 20, 1, "^"),
@@ -141,7 +173,10 @@ for case_name, runs, S, T, Nx, ncomp, marker in [
     cfg = runs.groupby(["variant", "K", "width", "depth", "d_s"], as_index=False).first()
     flops_dyn = 3.0 * 2.0 * cfg["dyn_params"] * S * (T - 1)
     flops_rec = cfg["flops_per_eval"] - flops_dyn
-    for variant, color in [("L0", "#1f77b4"), ("L2", "#d62728")]:
+    for variant, rname, color in [
+        ("L0", "$\\mathcal{R}_{\\mathrm{MLP}}$", "#1f77b4"),
+        ("L2", "$\\mathcal{R}_{\\mathrm{aff}}$", "#d62728"),
+    ]:
         m = cfg["variant"] == variant
         ax.scatter(
             flops_dyn[m],
@@ -150,23 +185,25 @@ for case_name, runs, S, T, Nx, ncomp, marker in [
             marker=marker,
             s=42,
             alpha=0.85,
-            label=f"{case_name} {variant}",
+            label=f"{case_name} {rname}",
         )
 ax.plot([1e6, 1e10], [1e6, 1e10], "k--", lw=1.0, alpha=0.5, label="1:1 parity")
 ax.set_xscale("log")
 ax.set_yscale("log")
-ax.set_xlabel("Dynamics rollout FLOPs / eval ($6 P_{\\mathrm{dyn}} S (T-1)$)")
+ax.set_xlabel("Dynamics rollout FLOPs / eval ($6 P_{\\mathrm{dyn}} S (N_t-1)$)")
 ax.set_ylabel("Reconstructor FLOPs / eval ($3 \\times \\mathrm{FLOPs}_{\\mathrm{rec}}$)")
 ax.set_title("(a) Dynamics vs Reconstructor FLOPs per Eval")
 ax.grid(True, which="both", ls=":", alpha=0.45)
 ax.legend(loc="lower right", fontsize=7.5)
 
-# Panel (b): Sustained GFLOP/s vs FLOPs per eval at 16 threads
 ax = axes[1]
 for case_name, timing, marker in [("Case B", timing_B, "o"), ("Case C", timing_C, "^")]:
     t16 = timing[timing["threads"] == 16].copy()
     t16["gflops_s"] = (t16["flops_per_eval"] / t16["s_per_eval"]) / 1e9
-    for variant, color in [("L0", "#1f77b4"), ("L2", "#d62728")]:
+    for variant, rname, color in [
+        ("L0", "$\\mathcal{R}_{\\mathrm{MLP}}$", "#1f77b4"),
+        ("L2", "$\\mathcal{R}_{\\mathrm{aff}}$", "#d62728"),
+    ]:
         sub = t16[t16["variant"] == variant]
         ax.scatter(
             sub["flops_per_eval"],
@@ -175,7 +212,7 @@ for case_name, timing, marker in [("Case B", timing_B, "o"), ("Case C", timing_C
             marker=marker,
             s=44,
             alpha=0.85,
-            label=f"{case_name} {variant} (16 thr)",
+            label=f"{case_name} {rname} (16 thr)",
         )
 ax.set_xscale("log")
 ax.set_yscale("log")
@@ -185,12 +222,11 @@ ax.set_title("(b) Hardware Throughput vs Arithmetic Volume")
 ax.grid(True, which="both", ls=":", alpha=0.45)
 ax.legend(loc="lower right", fontsize=7.5)
 
-# Panel (c): Multi-core GFLOP/s scaling across thread counts p in {1..112}
 ax = axes[2]
 
 
 def parse_threads(folder):
-    nb = json.load(open(ROOT / "RQ2-bis" / folder / "executed_timing.ipynb"))
+    nb = json.load(open(ROOT / "Study_II" / folder / "executed_timing.ipynb"))
     txt = "\n".join(
         "".join(o.get("text", []))
         for c in nb["cells"]
@@ -204,8 +240,8 @@ def parse_threads(folder):
 
 
 for case_name, folder, runs, w_can, L_can, n_can, color, marker in [
-    ("Case B L0 canonical ($T=101, N_x=200$)", "2D-Stokes", runs_B, 7, 2, 1, "#1f77b4", "o"),
-    ("Case C L0 canonical ($T=501, N_x=20$)", "ADR-1b", runs_C, 8, 1, 12, "#2ca02c", "s"),
+    ("Case B $\\mathcal{R}_{\\mathrm{MLP}}$ ($N_t=101, N_x=200$)", "Case_B_2D-Stokes", runs_B, 7, 2, 1, "#1f77b4", "o"),
+    ("Case C $\\mathcal{R}_{\\mathrm{MLP}}$ ($N_t=501, N_x=20$)", "Case_C_AP1D", runs_C, 8, 1, 12, "#2ca02c", "s"),
 ]:
     ts = parse_threads(folder).sort_values("threads")
     f_eval = runs[
@@ -216,8 +252,6 @@ for case_name, folder, runs, w_can, L_can, n_can, color, marker in [
     ]["flops_per_eval"].iloc[0]
     gflops = (f_eval / ts["s_per_eval"]) / 1e9
     ax.plot(ts["threads"], gflops, marker=marker, color=color, lw=2.0, label=case_name)
-    for p_val, gf_val in zip(ts["threads"], gflops):
-        print(f"  {case_name[:6]} p={p_val:3d}: {gf_val:.2f} GFLOP/s")
 ax.axvline(16, color="k", ls=":", alpha=0.6, label="Selected $p^*=16$ threads")
 ax.axvline(56, color="gray", ls="--", alpha=0.5, label="Single-socket boundary (56c)")
 ax.set_xscale("log", base=2)
@@ -232,21 +266,3 @@ ax.legend(loc="upper left", fontsize=7.5)
 fig.tight_layout()
 fig.savefig(OUT / "fig_flops_arithmetic_intensity.png", bbox_inches="tight")
 plt.close(fig)
-
-# Print summary statistics for the LaTeX section
-for name, timing, S, T, Nx in [
-    ("Case B", timing_B, 80, 101, 200),
-    ("Case C", timing_C, 100, 501, 20),
-]:
-    t16 = timing[timing["threads"] == 16].copy()
-    t16["gflops_s"] = (t16["flops_per_eval"] / t16["s_per_eval"]) / 1e9
-    t16["flops_dyn"] = 6.0 * t16["dyn_params"] * S * (T - 1)
-    t16["dyn_flop_share_%"] = 100.0 * t16["flops_dyn"] / t16["flops_per_eval"]
-    print(f"=== {name} (16 threads) ===")
-    for v in ["L0", "L2"]:
-        sub = t16[t16["variant"] == v]
-        print(
-            f"  {v}: FLOPs/eval in [{sub['flops_per_eval'].min():.3e}, {sub['flops_per_eval'].max():.3e}], "
-            f"GFLOP/s median={sub['gflops_s'].median():.2f} [{sub['gflops_s'].min():.2f}, {sub['gflops_s'].max():.2f}], "
-            f"dyn FLOP share in [{sub['dyn_flop_share_%'].min():.3f}%, {sub['dyn_flop_share_%'].max():.3f}%]"
-        )
